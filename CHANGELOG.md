@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-03-03
+
+### Added
+
+- Cache file (`{SPECS_DIR}/spec-status.md`) — human-readable markdown summary written by the scripts after each run and committed to git
+- Git-based staleness detection — only feature folders changed since the cache was last committed are rescanned; unchanged features are served from cache
+- Task counting in scripts — `tasks_total` and `tasks_completed` are now computed by the scripts and included in JSON output, eliminating the need for the AI to read individual `tasks.md` files
+- `from_cache` field in JSON output per feature — indicates whether data came from cache or a fresh scan
+- `cache_file` field in JSON output — path to the written cache file
+
+### Changed
+
+- `commands/status.md` — updated to use pre-computed task counts from script JSON output instead of counting lines from `tasks.md`
+
 ## [1.0.0] - 2026-02-27
 
 ### Added
@@ -19,4 +33,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Next action recommendations based on current state
 - JSON output format for machine-readable integration
 
+[1.1.0]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.0.0

@@ -40,10 +40,11 @@ Parse user input for:
 
 ### 1. Initialize Context
 
-Run `{SCRIPT}` from repo root to get REPO_ROOT and BRANCH. Determine:
+Run `{SCRIPT}` from repo root to get REPO_ROOT and BRANCH. The script also writes/updates `{SPECS_DIR}/spec-status.md` (the cache file) and returns pre-computed task counts for every feature — you do **not** need to read individual `tasks.md` files. Determine:
 
 - **REPO_ROOT**: Project root directory
 - **SPECS_DIR**: `{REPO_ROOT}/.specify/specs` (fall back to `{REPO_ROOT}/specs` if not found)
+- **CACHE_FILE**: `{SPECS_DIR}/spec-status.md` — maintained by the script; reflects current state
 - **MEMORY_DIR**: `{REPO_ROOT}/.specify/memory` (fall back to `{REPO_ROOT}/memory`)
 - **CURRENT_BRANCH**: Current git branch (or fallback per script logic)
 - **HAS_GIT**: Whether project is a git repository
@@ -76,11 +77,10 @@ For each feature directory, detect stage by checking file existence:
 
 **Implementation stage logic** (when `tasks.md` exists):
 
-- Count total tasks: Lines matching `- [ ]` or `- [x]` or `- [X]`
-- Count completed: Lines matching `- [x]` or `- [X]`
-- If 0 completed: `○ Ready`
-- If all completed: `✓ Complete`
-- If partial: `● {completed}/{total} ({percent}%)`
+- Use `tasks_total` and `tasks_completed` from the script JSON output — do **not** read `tasks.md` to count lines
+- If `tasks_total` is 0: `○ Ready`
+- If `tasks_completed == tasks_total`: `✓ Complete`
+- If partial: `● {tasks_completed}/{tasks_total} ({percent}%)`
 
 ### 4. Determine Target Feature
 
@@ -143,6 +143,8 @@ Optional recommendations based on context:
 - If tasks.md exists but not analyzed: Mention `/speckit.analyze` as optional
 
 ### 7. Generate Output
+
+> **Note:** `{CACHE_FILE}` (`{SPECS_DIR}/spec-status.md`) is written by the script and always reflects current state. Do **not** modify or rewrite it — it is maintained automatically.
 
 **Human-readable format** (default):
 

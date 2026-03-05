@@ -21,7 +21,7 @@ specify extension add status
 Or directly from GitHub:
 
 ```bash
-specify extension add --from https://github.com/Open-Agent-Tools/spec-kit-status/archive/refs/tags/v1.0.0.zip
+specify extension add --from https://github.com/Open-Agent-Tools/spec-kit-status/archive/refs/tags/v1.1.0.zip
 ```
 
 ## Usage

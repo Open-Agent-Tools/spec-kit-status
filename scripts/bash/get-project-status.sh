@@ -3,7 +3,8 @@
 # Project status discovery script for /speckit.status command
 #
 # This script discovers project structure and artifact existence.
-# It does NOT parse file contents - that's left to the AI agent.
+# It counts task completion and maintains a cache file (specs/spec-status.md)
+# so that only feature folders changed since the last cache commit are rescanned.
 #
 # Usage: ./get-project-status.sh [OPTIONS]
 #
@@ -13,8 +14,9 @@
 #   --help, -h          Show help message
 #
 # OUTPUTS:
-#   JSON mode: Full project status object
+#   JSON mode: Full project status object (includes tasks_total, tasks_completed, from_cache per feature)
 #   Text mode: Human-readable status lines
+#   Side effect: Writes/updates {SPECS_DIR}/spec-status.md
 
 set -e
 
@@ -138,6 +140,27 @@ json_escape() {
     printf '%s' "$str" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g; s/\r/\\r/g' | tr -d '\n'
 }
 
+# Function to count tasks in a tasks.md file
+# Returns: "total completed"
+count_tasks() {
+    local tasks_file="$1"
+    if [ -f "$tasks_file" ]; then
+        local total=$(grep -cE '^\s*- \[[ xX]\]' "$tasks_file" 2>/dev/null || echo 0)
+        local completed=$(grep -cE '^\s*- \[[xX]\]' "$tasks_file" 2>/dev/null || echo 0)
+        echo "$total $completed"
+    else
+        echo "0 0"
+    fi
+}
+
+# Function to extract a field value from a cache comment line
+# Usage: read_cache_field "<!-- feature: name key=val ... -->" "key"
+read_cache_field() {
+    local line="$1"
+    local field="$2"
+    echo "$line" | grep -oP "${field}=\K[^ >]+"
+}
+
 # Resolve repository root
 SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -199,72 +222,199 @@ fi
 # Sort features by number
 IFS=$'\n' FEATURES=($(sort <<<"${FEATURES[*]}")); unset IFS
 
-# Function to get feature info
-get_feature_info() {
-    local feature_name="$1"
-    local feature_dir="$SPECS_DIR/$feature_name"
+# ── Cache setup ───────────────────────────────────────────────────────────────
 
-    local has_spec=$(check_exists "$feature_dir/spec.md")
-    local has_plan=$(check_exists "$feature_dir/plan.md")
-    local has_tasks=$(check_exists "$feature_dir/tasks.md")
-    local has_research=$(check_exists "$feature_dir/research.md")
-    local has_data_model=$(check_exists "$feature_dir/data-model.md")
-    local has_quickstart=$(check_exists "$feature_dir/quickstart.md")
-    local has_contracts=$(check_exists "$feature_dir/contracts")
-    local has_checklists=$(check_exists "$feature_dir/checklists")
+CACHE_FILE="$SPECS_DIR/spec-status.md"
+SPECS_REL="${SPECS_DIR#$REPO_ROOT/}"  # e.g. "specs" or ".specify/specs"
 
-    # Get checklist files if they exist
-    local checklist_files=""
-    if [ "$has_checklists" = "true" ]; then
-        checklist_files=$(list_files "$feature_dir/checklists" ".md" | tr '\n' ',' | sed 's/,$//')
-    fi
+# Find last commit that wrote the cache
+LAST_CACHE_COMMIT=""
+if [ "$HAS_GIT" = "true" ] && [ -f "$CACHE_FILE" ]; then
+    LAST_CACHE_COMMIT=$(git log -1 --format="%H" -- "$SPECS_REL/spec-status.md" 2>/dev/null || true)
+fi
+
+# Determine which features need rescanning
+declare -a STALE_FEATURES=()
+if [ -z "$LAST_CACHE_COMMIT" ]; then
+    # No cache in git history — rescan everything
+    STALE_FEATURES=("${FEATURES[@]}")
+else
+    # Find changed paths in specs dir since the cache was last committed,
+    # excluding the cache file itself
+    CHANGED=$(
+        {
+            git diff --name-only "$LAST_CACHE_COMMIT" HEAD -- "$SPECS_REL/" 2>/dev/null
+            git diff --name-only -- "$SPECS_REL/" 2>/dev/null
+            git diff --cached --name-only -- "$SPECS_REL/" 2>/dev/null
+        } | grep -v "spec-status\.md" | sort -u
+    )
+
+    for feature in "${FEATURES[@]}"; do
+        if echo "$CHANGED" | grep -q "^$SPECS_REL/$feature/" || \
+           ! grep -q "^<!-- feature: $feature " "$CACHE_FILE" 2>/dev/null; then
+            STALE_FEATURES+=("$feature")
+        fi
+    done
+fi
+
+# Build a set of stale features for fast lookup
+declare -A STALE_SET=()
+for f in "${STALE_FEATURES[@]}"; do
+    STALE_SET["$f"]=1
+done
+
+# ── Per-feature data collection ───────────────────────────────────────────────
+
+# Storage arrays (indexed by feature name via associative array)
+declare -A FEAT_IS_CURRENT FEAT_HAS_SPEC FEAT_HAS_PLAN FEAT_HAS_TASKS
+declare -A FEAT_HAS_RESEARCH FEAT_HAS_DATA_MODEL FEAT_HAS_QUICKSTART
+declare -A FEAT_HAS_CONTRACTS FEAT_HAS_CHECKLISTS FEAT_CHECKLIST_FILES
+declare -A FEAT_TASKS_TOTAL FEAT_TASKS_COMPLETED FEAT_FROM_CACHE
+
+for feature in "${FEATURES[@]}"; do
+    feature_dir="$SPECS_DIR/$feature"
 
     # Determine if this is the current feature
-    local is_current=false
+    is_current=false
     if [ "$IS_FEATURE_BRANCH" = "true" ]; then
-        # Extract prefix from current branch
-        local current_prefix=$(echo "$CURRENT_BRANCH" | grep -o '^[0-9]\{3\}')
-        local feature_prefix=$(echo "$feature_name" | grep -o '^[0-9]\{3\}')
+        current_prefix=$(echo "$CURRENT_BRANCH" | grep -o '^[0-9]\{3\}')
+        feature_prefix=$(echo "$feature" | grep -o '^[0-9]\{3\}')
         if [ "$current_prefix" = "$feature_prefix" ]; then
             is_current=true
         fi
     fi
+    FEAT_IS_CURRENT["$feature"]="$is_current"
 
-    if $JSON_MODE; then
-        printf '{"name":"%s","path":"%s","is_current":%s,"has_spec":%s,"has_plan":%s,"has_tasks":%s,"has_research":%s,"has_data_model":%s,"has_quickstart":%s,"has_contracts":%s,"has_checklists":%s,"checklist_files":[%s]}' \
-            "$(json_escape "$feature_name")" \
-            "$(json_escape "$feature_dir")" \
-            "$is_current" \
-            "$has_spec" \
-            "$has_plan" \
-            "$has_tasks" \
-            "$has_research" \
-            "$has_data_model" \
-            "$has_quickstart" \
-            "$has_contracts" \
-            "$has_checklists" \
-            "$(echo "$checklist_files" | sed 's/\([^,]*\)/"\1"/g')"
-    else
-        echo "  Name: $feature_name"
-        echo "  Path: $feature_dir"
-        echo "  Current: $is_current"
-        echo "  Artifacts:"
-        echo "    spec.md: $has_spec"
-        echo "    plan.md: $has_plan"
-        echo "    tasks.md: $has_tasks"
-        echo "    research.md: $has_research"
-        echo "    data-model.md: $has_data_model"
-        echo "    quickstart.md: $has_quickstart"
-        echo "    contracts/: $has_contracts"
-        echo "    checklists/: $has_checklists"
-        if [ -n "$checklist_files" ]; then
-            echo "    checklist_files: $checklist_files"
+    if [ -n "${STALE_SET[$feature]+_}" ]; then
+        # ── Fresh scan ────────────────────────────────────────────────────────
+        FEAT_HAS_SPEC["$feature"]=$(check_exists "$feature_dir/spec.md")
+        FEAT_HAS_PLAN["$feature"]=$(check_exists "$feature_dir/plan.md")
+        FEAT_HAS_TASKS["$feature"]=$(check_exists "$feature_dir/tasks.md")
+        FEAT_HAS_RESEARCH["$feature"]=$(check_exists "$feature_dir/research.md")
+        FEAT_HAS_DATA_MODEL["$feature"]=$(check_exists "$feature_dir/data-model.md")
+        FEAT_HAS_QUICKSTART["$feature"]=$(check_exists "$feature_dir/quickstart.md")
+        FEAT_HAS_CONTRACTS["$feature"]=$(check_exists "$feature_dir/contracts")
+        FEAT_HAS_CHECKLISTS["$feature"]=$(check_exists "$feature_dir/checklists")
+
+        checklist_files=""
+        if [ "${FEAT_HAS_CHECKLISTS[$feature]}" = "true" ]; then
+            checklist_files=$(list_files "$feature_dir/checklists" ".md" | tr '\n' ',' | sed 's/,$//')
         fi
-        echo ""
+        FEAT_CHECKLIST_FILES["$feature"]="$checklist_files"
+
+        read tasks_total tasks_completed <<< $(count_tasks "$feature_dir/tasks.md")
+        FEAT_TASKS_TOTAL["$feature"]="$tasks_total"
+        FEAT_TASKS_COMPLETED["$feature"]="$tasks_completed"
+        FEAT_FROM_CACHE["$feature"]=false
+    else
+        # ── Load from cache ───────────────────────────────────────────────────
+        cache_line=$(grep "^<!-- feature: $feature " "$CACHE_FILE" 2>/dev/null || true)
+        FEAT_HAS_SPEC["$feature"]=$(read_cache_field "$cache_line" "has_spec")
+        FEAT_HAS_PLAN["$feature"]=$(read_cache_field "$cache_line" "has_plan")
+        FEAT_HAS_TASKS["$feature"]=$(read_cache_field "$cache_line" "has_tasks")
+        FEAT_HAS_RESEARCH["$feature"]=$(read_cache_field "$cache_line" "has_research")
+        FEAT_HAS_DATA_MODEL["$feature"]=$(read_cache_field "$cache_line" "has_data_model")
+        FEAT_HAS_QUICKSTART["$feature"]=$(read_cache_field "$cache_line" "has_quickstart")
+        FEAT_HAS_CONTRACTS["$feature"]=$(read_cache_field "$cache_line" "has_contracts")
+        FEAT_HAS_CHECKLISTS["$feature"]=$(read_cache_field "$cache_line" "has_checklists")
+        FEAT_CHECKLIST_FILES["$feature"]=$(read_cache_field "$cache_line" "checklist_files")
+        FEAT_TASKS_TOTAL["$feature"]=$(read_cache_field "$cache_line" "tasks_total")
+        FEAT_TASKS_COMPLETED["$feature"]=$(read_cache_field "$cache_line" "tasks_completed")
+        FEAT_FROM_CACHE["$feature"]=true
     fi
+done
+
+# ── Write cache file ──────────────────────────────────────────────────────────
+
+write_cache() {
+    local cache_file="$1"
+    local current_commit=""
+    if [ "$HAS_GIT" = "true" ]; then
+        current_commit=$(git rev-parse HEAD 2>/dev/null || echo "")
+    fi
+    local timestamp
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u)
+
+    # Ensure the specs directory exists
+    mkdir -p "$(dirname "$cache_file")"
+
+    {
+        echo "# Spec-Driven Development Status"
+        echo "<!-- spec-status: project=$(json_escape "$PROJECT_NAME") commit=$current_commit updated=$timestamp -->"
+        echo ""
+
+        # Build the markdown table
+        local col_widths=7  # minimum "Feature" width
+        for feature in "${FEATURES[@]}"; do
+            local len=${#feature}
+            if [ "$len" -gt "$col_widths" ]; then col_widths=$len; fi
+        done
+
+        local header_feat
+        printf -v header_feat "%-${col_widths}s" "Feature"
+        echo "| $header_feat | Specify | Plan | Tasks | Implement |"
+        echo "|$(printf '%0.s-' $(seq 1 $((col_widths + 2))))|---------|------|-------|-----------|"
+
+        for feature in "${FEATURES[@]}"; do
+            local specify_sym plan_sym tasks_sym implement_str
+            specify_sym=$([ "${FEAT_HAS_SPEC[$feature]}" = "true" ] && echo "✓" || echo "-")
+            plan_sym=$([ "${FEAT_HAS_PLAN[$feature]}" = "true" ] && echo "✓" || echo "-")
+            tasks_sym=$([ "${FEAT_HAS_TASKS[$feature]}" = "true" ] && echo "✓" || echo "-")
+
+            local total="${FEAT_TASKS_TOTAL[$feature]:-0}"
+            local completed="${FEAT_TASKS_COMPLETED[$feature]:-0}"
+            if [ "${FEAT_HAS_TASKS[$feature]}" != "true" ]; then
+                implement_str="-"
+            elif [ "$total" -eq 0 ]; then
+                implement_str="○ Ready"
+            elif [ "$completed" -eq "$total" ]; then
+                implement_str="✓ Complete"
+            else
+                local pct=$(( completed * 100 / total ))
+                implement_str="● $completed/$total ($pct%)"
+            fi
+
+            local feat_col
+            printf -v feat_col "%-${col_widths}s" "$feature"
+            printf "| %s | %-7s | %-4s | %-5s | %-9s |\n" \
+                "$feat_col" "$specify_sym" "$plan_sym" "$tasks_sym" "$implement_str"
+        done
+
+        if [ "${#FEATURES[@]}" -eq 0 ]; then
+            local feat_col
+            printf -v feat_col "%-${col_widths}s" "(none)"
+            echo "| $feat_col |         |      |       |           |"
+        fi
+
+        echo ""
+
+        # Machine-readable per-feature metadata as HTML comments
+        for feature in "${FEATURES[@]}"; do
+            printf '<!-- feature: %s has_spec=%s has_plan=%s has_tasks=%s has_research=%s has_data_model=%s has_quickstart=%s has_contracts=%s has_checklists=%s tasks_total=%s tasks_completed=%s checklist_files=%s -->\n' \
+                "$feature" \
+                "${FEAT_HAS_SPEC[$feature]}" \
+                "${FEAT_HAS_PLAN[$feature]}" \
+                "${FEAT_HAS_TASKS[$feature]}" \
+                "${FEAT_HAS_RESEARCH[$feature]}" \
+                "${FEAT_HAS_DATA_MODEL[$feature]}" \
+                "${FEAT_HAS_QUICKSTART[$feature]}" \
+                "${FEAT_HAS_CONTRACTS[$feature]}" \
+                "${FEAT_HAS_CHECKLISTS[$feature]}" \
+                "${FEAT_TASKS_TOTAL[$feature]:-0}" \
+                "${FEAT_TASKS_COMPLETED[$feature]:-0}" \
+                "${FEAT_CHECKLIST_FILES[$feature]}"
+        done
+    } > "$cache_file"
 }
 
-# Resolve target feature if specified
+# Only write cache if the specs directory exists (or will exist)
+if [ -d "$SPECS_DIR" ] || [ "${#FEATURES[@]}" -gt 0 ]; then
+    mkdir -p "$SPECS_DIR"
+    write_cache "$CACHE_FILE"
+fi
+
+# ── Resolve target feature ────────────────────────────────────────────────────
+
 RESOLVED_TARGET=""
 if [ -n "$TARGET_FEATURE" ]; then
     # Try exact match first
@@ -298,22 +448,45 @@ if [ -n "$TARGET_FEATURE" ]; then
     fi
 fi
 
-# Output results
+# ── Output results ────────────────────────────────────────────────────────────
+
+get_feature_json() {
+    local feature="$1"
+    local feature_dir="$SPECS_DIR/$feature"
+    local checklist_files="${FEAT_CHECKLIST_FILES[$feature]}"
+
+    printf '{"name":"%s","path":"%s","is_current":%s,"has_spec":%s,"has_plan":%s,"has_tasks":%s,"has_research":%s,"has_data_model":%s,"has_quickstart":%s,"has_contracts":%s,"has_checklists":%s,"tasks_total":%s,"tasks_completed":%s,"from_cache":%s,"checklist_files":[%s]}' \
+        "$(json_escape "$feature")" \
+        "$(json_escape "$feature_dir")" \
+        "${FEAT_IS_CURRENT[$feature]}" \
+        "${FEAT_HAS_SPEC[$feature]}" \
+        "${FEAT_HAS_PLAN[$feature]}" \
+        "${FEAT_HAS_TASKS[$feature]}" \
+        "${FEAT_HAS_RESEARCH[$feature]}" \
+        "${FEAT_HAS_DATA_MODEL[$feature]}" \
+        "${FEAT_HAS_QUICKSTART[$feature]}" \
+        "${FEAT_HAS_CONTRACTS[$feature]}" \
+        "${FEAT_HAS_CHECKLISTS[$feature]}" \
+        "${FEAT_TASKS_TOTAL[$feature]:-0}" \
+        "${FEAT_TASKS_COMPLETED[$feature]:-0}" \
+        "${FEAT_FROM_CACHE[$feature]}" \
+        "$(echo "$checklist_files" | sed 's/\([^,]*\)/"\1"/g')"
+}
+
 if $JSON_MODE; then
-    # Build features array
     features_json=""
     for feature in "${FEATURES[@]}"; do
         if [ -n "$features_json" ]; then
             features_json="$features_json,"
         fi
-        features_json="$features_json$(get_feature_info "$feature")"
+        features_json="$features_json$(get_feature_json "$feature")"
     done
 
-    # Build main JSON object
     printf '{'
     printf '"project":"%s",' "$(json_escape "$PROJECT_NAME")"
     printf '"repo_root":"%s",' "$(json_escape "$REPO_ROOT")"
     printf '"specs_dir":"%s",' "$(json_escape "$SPECS_DIR")"
+    printf '"cache_file":"%s",' "$(json_escape "$CACHE_FILE")"
     printf '"has_git":%s,' "$HAS_GIT"
     printf '"branch":"%s",' "$(json_escape "$CURRENT_BRANCH")"
     printf '"is_feature_branch":%s,' "$IS_FEATURE_BRANCH"
@@ -335,6 +508,7 @@ else
     echo "Project: $PROJECT_NAME"
     echo "Root: $REPO_ROOT"
     echo "Specs: $SPECS_DIR"
+    echo "Cache: $CACHE_FILE"
     echo "Git: $HAS_GIT"
     echo "Branch: $CURRENT_BRANCH"
     echo "Feature Branch: $IS_FEATURE_BRANCH"
@@ -353,7 +527,25 @@ else
         echo "  (none)"
     else
         for feature in "${FEATURES[@]}"; do
-            get_feature_info "$feature"
+            feature_dir="$SPECS_DIR/$feature"
+            echo "  Name: $feature"
+            echo "  Path: $feature_dir"
+            echo "  Current: ${FEAT_IS_CURRENT[$feature]}"
+            echo "  From cache: ${FEAT_FROM_CACHE[$feature]}"
+            echo "  Artifacts:"
+            echo "    spec.md: ${FEAT_HAS_SPEC[$feature]}"
+            echo "    plan.md: ${FEAT_HAS_PLAN[$feature]}"
+            echo "    tasks.md: ${FEAT_HAS_TASKS[$feature]}"
+            echo "    research.md: ${FEAT_HAS_RESEARCH[$feature]}"
+            echo "    data-model.md: ${FEAT_HAS_DATA_MODEL[$feature]}"
+            echo "    quickstart.md: ${FEAT_HAS_QUICKSTART[$feature]}"
+            echo "    contracts/: ${FEAT_HAS_CONTRACTS[$feature]}"
+            echo "    checklists/: ${FEAT_HAS_CHECKLISTS[$feature]}"
+            echo "  Tasks: ${FEAT_TASKS_COMPLETED[$feature]:-0}/${FEAT_TASKS_TOTAL[$feature]:-0}"
+            if [ -n "${FEAT_CHECKLIST_FILES[$feature]}" ]; then
+                echo "    checklist_files: ${FEAT_CHECKLIST_FILES[$feature]}"
+            fi
+            echo ""
         done
     fi
 fi
