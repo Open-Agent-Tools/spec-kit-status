@@ -14,11 +14,7 @@ A [Spec Kit](https://github.com/github/spec-kit) extension that adds the `/speck
 
 ## Installation
 
-```bash
-specify extension add status
-```
-
-Or directly from GitHub:
+directly from GitHub:
 
 ```bash
 specify extension add --from https://github.com/Open-Agent-Tools/spec-kit-status/archive/refs/tags/v1.1.2.zip
