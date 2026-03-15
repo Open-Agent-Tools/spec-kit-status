@@ -13,7 +13,7 @@ $ARGUMENTS
 
 ## Goal
 
-Provide a clear, at-a-glance view of project status and workflow progress. This command is **READ-ONLY** and helps users understand where they are in the spec-driven development workflow and what to do next.
+Provide a clear, at-a-glance view of project status and workflow progress. This command helps users understand where they are in the spec-driven development workflow and what to do next. It also writes/updates `{SPECS_DIR}/spec-status.md` as a cached status snapshot.
 
 This command answers: "Where am I and what should I do next?"
 
@@ -285,11 +285,11 @@ Run /speckit.specify to create your first feature.
 
 ## Operating Principles
 
-### Read-Only Operation
+### Cache Maintenance
 
-- **NEVER** modify any files
-- **NEVER** create any files
-- This command is purely informational
+- The script writes/updates `{SPECS_DIR}/spec-status.md` on every run — this is expected behavior
+- Do **not** manually edit `spec-status.md` — it is maintained automatically by the script
+- No other project files should be modified by this command
 
 ### Context Efficiency
 
