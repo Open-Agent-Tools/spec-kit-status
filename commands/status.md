@@ -1,8 +1,8 @@
 ---
 description: Display project status, feature progress, and recommended next actions across the spec-driven development workflow.
 scripts:
-  sh: scripts/bash/get-project-status.sh --json
-  ps: scripts/powershell/Get-ProjectStatus.ps1 -Json
+  sh: .specify/extensions/status/scripts/bash/get-project-status.sh --json
+  ps: .specify/extensions/status/scripts/powershell/Get-ProjectStatus.ps1 -Json
 ---
 
 ## User Input
@@ -40,7 +40,7 @@ Parse user input for:
 
 ### 1. Initialize Context
 
-Run `{SCRIPT}` from repo root to get REPO_ROOT and BRANCH. The script also writes/updates `{SPECS_DIR}/spec-status.md` (the cache file) and returns pre-computed task counts for every feature — you do **not** need to read individual `tasks.md` files. Determine:
+Run the script specified in the `scripts` frontmatter (use `sh` on macOS/Linux, `ps` on Windows) from the repo root to get REPO_ROOT and BRANCH. The script also writes/updates `{SPECS_DIR}/spec-status.md` (the cache file) and returns pre-computed task counts for every feature — you do **not** need to read individual `tasks.md` files. Determine:
 
 - **REPO_ROOT**: Project root directory
 - **SPECS_DIR**: `{REPO_ROOT}/.specify/specs` (fall back to `{REPO_ROOT}/specs` if not found)
