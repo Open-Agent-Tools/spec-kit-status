@@ -190,13 +190,13 @@ else
     CURRENT_BRANCH=""
 fi
 
-# Determine specs directory (.specify/specs or specs/)
-if [ -d "$REPO_ROOT/.specify/specs" ]; then
-    SPECS_DIR="$REPO_ROOT/.specify/specs"
-elif [ -d "$REPO_ROOT/specs" ]; then
+# Determine specs directory (specs/ or .specify/specs/)
+if [ -d "$REPO_ROOT/specs" ]; then
     SPECS_DIR="$REPO_ROOT/specs"
+elif [ -d "$REPO_ROOT/.specify/specs" ]; then
+    SPECS_DIR="$REPO_ROOT/.specify/specs"
 else
-    SPECS_DIR="$REPO_ROOT/.specify/specs"  # Default even if doesn't exist
+    SPECS_DIR="$REPO_ROOT/specs"  # Default even if doesn't exist
 fi
 
 # Determine memory directory (.specify/memory or memory/)

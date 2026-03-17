@@ -43,7 +43,7 @@ Parse user input for:
 Run the script specified in the `scripts` frontmatter (use `sh` on macOS/Linux, `ps` on Windows) from the repo root to get REPO_ROOT and BRANCH. The script also writes/updates `{SPECS_DIR}/spec-status.md` (the cache file) and returns pre-computed task counts for every feature — you do **not** need to read individual `tasks.md` files. Determine:
 
 - **REPO_ROOT**: Project root directory
-- **SPECS_DIR**: `{REPO_ROOT}/.specify/specs` (fall back to `{REPO_ROOT}/specs` if not found)
+- **SPECS_DIR**: `{REPO_ROOT}/specs` (fall back to `{REPO_ROOT}/.specify/specs` if not found)
 - **CACHE_FILE**: `{SPECS_DIR}/spec-status.md` — maintained by the script; reflects current state
 - **MEMORY_DIR**: `{REPO_ROOT}/.specify/memory` (fall back to `{REPO_ROOT}/memory`)
 - **CURRENT_BRANCH**: Current git branch (or fallback per script logic)

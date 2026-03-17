@@ -155,12 +155,12 @@ try {
 }
 
 # Determine specs directory
-$SpecsDir = if (Test-Path (Join-Path $RepoRoot ".specify/specs")) {
-    Join-Path $RepoRoot ".specify/specs"
-} elseif (Test-Path (Join-Path $RepoRoot "specs")) {
+$SpecsDir = if (Test-Path (Join-Path $RepoRoot "specs")) {
     Join-Path $RepoRoot "specs"
+} elseif (Test-Path (Join-Path $RepoRoot ".specify/specs")) {
+    Join-Path $RepoRoot ".specify/specs"
 } else {
-    Join-Path $RepoRoot ".specify/specs"  # Default
+    Join-Path $RepoRoot "specs"  # Default
 }
 
 # Determine memory directory
