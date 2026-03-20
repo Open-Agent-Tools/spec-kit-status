@@ -434,7 +434,7 @@ if ($Json) {
 
     $output | ConvertTo-Json -Depth 10 -Compress
 } else {
-    Write-Output "Project Status Discovery"
+    Write-Output "Status Report Discovery"
     Write-Output "========================"
     Write-Output ""
     Write-Output "Project: $ProjectName"

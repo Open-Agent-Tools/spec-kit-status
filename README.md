@@ -1,4 +1,4 @@
-# Project Status — Spec Kit Extension
+# Status Report — Spec Kit Extension
 
 A [Spec Kit](https://github.com/github/spec-kit) extension that adds the `/speckit.status` command, giving you an at-a-glance view of project and feature progress across the spec-driven development workflow.
 
@@ -17,7 +17,7 @@ A [Spec Kit](https://github.com/github/spec-kit) extension that adds the `/speck
 directly from GitHub:
 
 ```bash
-specify extension add --from https://github.com/Open-Agent-Tools/spec-kit-status/archive/refs/tags/v1.1.3.zip EXTENSION
+specify extension add --from https://github.com/Open-Agent-Tools/spec-kit-status/archive/refs/tags/v1.1.4.zip
 ```
 
 ## Usage

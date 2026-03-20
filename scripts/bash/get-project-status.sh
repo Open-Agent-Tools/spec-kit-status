@@ -536,7 +536,7 @@ if $JSON_MODE; then
     printf '"features":[%s]' "$features_json"
     printf '}\n'
 else
-    echo "Project Status Discovery"
+    echo "Status Report Discovery"
     echo "========================"
     echo ""
     echo "Project: $PROJECT_NAME"

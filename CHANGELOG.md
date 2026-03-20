@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.4] - 2026-03-20
+
+### Changed
+
+- Renamed extension ID from `status` to `status-report` to avoid collision with existing community extension
+- Renamed extension from "Project Status" to "Status Report"
+- Updated script paths in command spec to match new extension ID
+
+## [1.1.3] - 2026-03-16
+
+### Fixed
+
+- Fix specs directory lookup order to prefer `specs/` over `.specify/specs/`
+
 ## [1.1.2] - 2026-03-15
 
 ### Fixed
@@ -49,6 +63,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Next action recommendations based on current state
 - JSON output format for machine-readable integration
 
+[1.1.4]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.1.4
+[1.1.3]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.1.3
 [1.1.2]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.1.2
 [1.1.1]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.1.1
 [1.1.0]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.1.0
