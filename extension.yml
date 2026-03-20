@@ -15,11 +15,9 @@ requires:
 
 provides:
   commands:
-    - name: "speckit.status.show"
+    - name: "speckit.status"
       file: "commands/status.md"
       description: "Display project status and feature progress"
-      aliases:
-        - "speckit.status"
 
 tags:
   - "workflow"
