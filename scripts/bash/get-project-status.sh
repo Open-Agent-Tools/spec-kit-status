@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Project status discovery script for /speckit.status command
+# Project status discovery script for /speckit.status.report command
 #
 # This script discovers project structure and artifact existence.
 # It counts task completion and maintains a cache file (specs/spec-status.md)
@@ -42,7 +42,7 @@ while [ $# -gt 0 ]; do
             cat << 'EOF'
 Usage: get-project-status.sh [OPTIONS]
 
-Discover project structure and artifact existence for /speckit.status.
+Discover project structure and artifact existence for /speckit.status.report.
 
 OPTIONS:
   --json              Output in JSON format (default: text)

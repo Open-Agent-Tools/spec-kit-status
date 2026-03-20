@@ -1,6 +1,6 @@
 #!/usr/bin/env pwsh
 
-# Project status discovery script for /speckit.status command
+# Project status discovery script for /speckit.status.report command
 #
 # This script discovers project structure and artifact existence.
 # It counts task completion and maintains a cache file (specs/spec-status.md)
@@ -27,7 +27,7 @@ if ($Help) {
     Write-Output @"
 Usage: Get-ProjectStatus.ps1 [OPTIONS]
 
-Discover project structure and artifact existence for /speckit.status.
+Discover project structure and artifact existence for /speckit.status.report.
 
 OPTIONS:
   -Json               Output in JSON format (default: text)

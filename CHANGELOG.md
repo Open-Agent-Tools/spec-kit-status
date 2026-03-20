@@ -53,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `/speckit.status` command — display project status, feature progress, and recommended next actions
+- `/speckit.status.report` command — display project status, feature progress, and recommended next actions
 - Support for `--all`, `--verbose`, `--json`, and `--feature` flags
 - Bash discovery script (`scripts/bash/get-project-status.sh`)
 - PowerShell discovery script (`scripts/powershell/Get-ProjectStatus.ps1`)

@@ -309,4 +309,4 @@ Run /speckit.specify to create your first feature.
 - Always show the features overview for project context
 - Clearly indicate current/active feature with `<` marker
 - Make next action obvious and specific
-- Support both quick checks (`/speckit.status`) and deep dives (`--verbose`)
+- Support both quick checks (`/speckit.status.report`) and deep dives (`--verbose`)
