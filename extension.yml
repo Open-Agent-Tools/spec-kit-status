@@ -15,7 +15,7 @@ requires:
 
 provides:
   commands:
-    - name: "speckit.status"
+    - name: "speckit.status.report"
       file: "commands/status.md"
       description: "Display project status and feature progress"
 
