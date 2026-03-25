@@ -13,138 +13,89 @@ $ARGUMENTS
 
 ## Goal
 
-Provide a clear, at-a-glance view of project status and workflow progress. This command helps users understand where they are in the spec-driven development workflow and what to do next. It also writes/updates `{SPECS_DIR}/spec-status.md` as a cached status snapshot.
+Provide a clear, at-a-glance view of project status and workflow progress — answering "Where am I and what should I do next?" Also writes/updates `{SPECS_DIR}/spec-status.md` as a cached status snapshot. (For artifact quality analysis, use `/speckit.analyze` instead.)
 
-This command answers: "Where am I and what should I do next?"
-
-(For artifact quality and consistency analysis, use `/speckit.analyze` instead.)
+**CRITICAL: You MUST run the shell script from the `scripts` frontmatter BEFORE doing anything else.** Use `sh` on macOS/Linux, `ps` on Windows. Execute from the repo root. The script discovers the repo layout, computes task counts, and writes the cache file. Do NOT skip this or replicate its logic manually.
 
 ## Input Parsing
 
 Parse user input for:
-
-1. **Feature identifier** (optional, positional):
-   - Feature name: `002-dashboard`
-   - Feature number prefix: `002`
-   - Feature path: `specs/002-dashboard`
-
-2. **Flags**:
-   - `--all`: Show features overview only, no detail section
-   - `--verbose`: Include task breakdown and artifact summaries
-   - `--json`: Output machine-readable JSON instead of formatted text
-   - `--feature <name>`: Explicit feature selection (alternative to positional)
+- **Feature identifier** (optional, positional): name (`002-dashboard`), number prefix (`002`), or path (`specs/002-dashboard`)
+- **Flags**: `--all` (overview only), `--verbose` (task breakdown + artifact summaries), `--json` (machine-readable), `--feature <name>` (explicit selection)
 
 **Precedence**: Explicit feature > positional argument > current branch > `--all` required
 
 ## Execution Steps
 
-### 1. Initialize Context
+### 1. Initialize Context (MANDATORY — run the script)
 
-Run the script specified in the `scripts` frontmatter (use `sh` on macOS/Linux, `ps` on Windows) from the repo root to get REPO_ROOT and BRANCH. The script also writes/updates `{SPECS_DIR}/spec-status.md` (the cache file) and returns pre-computed task counts for every feature — you do **not** need to read individual `tasks.md` files. Determine:
+**Run the script** from the `scripts` frontmatter from the repo root. Parse its JSON output to populate:
 
 - **REPO_ROOT**: Project root directory
-- **SPECS_DIR**: `{REPO_ROOT}/specs` (fall back to `{REPO_ROOT}/.specify/specs` if not found)
-- **CACHE_FILE**: `{SPECS_DIR}/spec-status.md` — maintained by the script; reflects current state
+- **SPECS_DIR**: `{REPO_ROOT}/specs` (fall back to `{REPO_ROOT}/.specify/specs`)
+- **CACHE_FILE**: `{SPECS_DIR}/spec-status.md` — maintained by the script automatically
 - **MEMORY_DIR**: `{REPO_ROOT}/.specify/memory` (fall back to `{REPO_ROOT}/memory`)
-- **CURRENT_BRANCH**: Current git branch (or fallback per script logic)
+- **CURRENT_BRANCH**: Current git branch
 - **HAS_GIT**: Whether project is a git repository
+
+The script returns pre-computed task counts for every feature — do **not** read individual `tasks.md` files.
 
 ### 2. Load Constitution Status
 
-Check for constitution file at `{MEMORY_DIR}/constitution.md`:
-
-- If exists: Extract version from file (look for `## Version` section or `version:` in frontmatter)
-- Format: `✓ Defined (v1.2.0)` or `✓ Defined` if no version found
-- If missing: `○ Not defined`
+Check `{MEMORY_DIR}/constitution.md`:
+- Exists: `✓ Defined (v1.2.0)` (extract version from `## Version` or `version:` frontmatter) or `✓ Defined`
+- Missing: `○ Not defined`
 
 ### 3. Scan All Features
 
-Scan `{SPECS_DIR}` for feature directories (matching pattern `NNN-*` where NNN is 3 digits):
+Scan `{SPECS_DIR}` for directories matching `NNN-*` (3-digit prefix). For each, detect stages:
 
-For each feature directory, detect stage by checking file existence:
+| Stage | ✓ | ○ | - |
+|-------|---|---|---|
+| Specify | `spec.md` exists | missing | — |
+| Plan | `plan.md` exists | missing + spec exists | no spec |
+| Tasks | `tasks.md` exists | missing + plan exists | no plan |
+| Implement | see below | | |
 
-| Stage | Condition | Display |
-|-------|-----------|---------|
-| Specify | `spec.md` exists | ✓ |
-| Specify | `spec.md` missing | ○ |
-| Plan | `plan.md` exists | ✓ |
-| Plan | `plan.md` missing, spec exists | ○ |
-| Plan | `plan.md` missing, no spec | - |
-| Tasks | `tasks.md` exists | ✓ |
-| Tasks | `tasks.md` missing, plan exists | ○ |
-| Tasks | `tasks.md` missing, no plan | - |
-| Implement | Parse `tasks.md` for completion | See below |
-
-**Implementation stage logic** (when `tasks.md` exists):
-
-- Use `tasks_total` and `tasks_completed` from the script JSON output — do **not** read `tasks.md` to count lines
-- If `tasks_total` is 0: `○ Ready`
-- If `tasks_completed == tasks_total`: `✓ Complete`
-- If partial: `● {tasks_completed}/{tasks_total} ({percent}%)`
+**Implementation stage** (uses `tasks_total`/`tasks_completed` from script JSON — do NOT count lines):
+- `tasks_total` is 0: `○ Ready`
+- `tasks_completed == tasks_total`: `✓ Complete`
+- Partial: `● {completed}/{total} ({percent}%)`
 
 ### 4. Determine Target Feature
 
-Based on input parsing:
-
-1. If `--all` flag: Skip detail section, show overview only
-2. If feature specified (positional or `--feature`): Use that feature
-3. If on feature branch (matches `NNN-*` pattern): Use current branch feature
-4. If on non-feature branch (e.g., `main`):
-   - Add note: `ℹ Not on a feature branch`
-   - Show overview only (no detail section)
+1. `--all` flag: overview only, no detail section
+2. Feature specified (positional or `--feature`): use that feature
+3. On feature branch (matches `NNN-*`): use current branch feature
+4. On non-feature branch (e.g., `main`): show `ℹ Not on a feature branch`, overview only
 
 ### 5. Build Feature Detail (if target feature selected)
 
-For the target feature, gather:
+**Artifacts** — check existence of each in `{FEATURE_DIR}/`:
 
-**Artifacts status**:
+`spec.md`, `plan.md`, `tasks.md`, `research.md`, `data-model.md`, `quickstart.md`, `contracts/` (non-empty dir), `checklists/` (non-empty dir)
 
-| Artifact | Path | Check |
-|----------|------|-------|
-| spec.md | `{FEATURE_DIR}/spec.md` | File exists |
-| plan.md | `{FEATURE_DIR}/plan.md` | File exists |
-| tasks.md | `{FEATURE_DIR}/tasks.md` | File exists |
-| research.md | `{FEATURE_DIR}/research.md` | File exists |
-| data-model.md | `{FEATURE_DIR}/data-model.md` | File exists |
-| quickstart.md | `{FEATURE_DIR}/quickstart.md` | File exists |
-| contracts/ | `{FEATURE_DIR}/contracts/` | Directory exists and non-empty |
-| checklists/ | `{FEATURE_DIR}/checklists/` | Directory exists and non-empty |
+Display: `✓` exists, `○` ready to create (prerequisite met), `-` not applicable yet
 
-Display: `✓` exists, `○` ready to create (prerequisite exists), `-` not applicable yet
+**Checklists** (if `checklists/` exists): For each `.md` file, count `- [ ]`/`- [x]`/`- [X]` items. Format: `✓ {name} {done}/{total}` or `● {name} {done}/{total}`
 
-**Checklists status** (if `checklists/` exists):
-
-For each `.md` file in checklists/:
-- Count total items: `- [ ]` or `- [x]` or `- [X]`
-- Count completed: `- [x]` or `- [X]`
-- Format: `✓ {name} {completed}/{total}` or `● {name} {completed}/{total}`
-
-**Task progress** (if `--verbose` and `tasks.md` exists):
-
-Parse tasks.md for phase sections (headers containing "Phase"):
-- Extract phase name and task counts
-- Show: `✓` complete, `●` in progress, `○` not started, `-` blocked
+**Task progress** (`--verbose` only, when `tasks.md` exists): Parse phase sections (headers containing "Phase"), show per-phase: `✓` complete, `●` in progress, `○` not started, `-` blocked
 
 ### 6. Determine Next Action
-
-Based on target feature state, recommend next command:
 
 | Current State | Next Action | Message |
 |---------------|-------------|---------|
 | No spec.md | `/speckit.specify` | Create feature specification |
 | spec.md, no plan.md | `/speckit.plan` | Create implementation plan |
 | plan.md, no tasks.md | `/speckit.tasks` | Generate implementation tasks |
-| tasks.md, 0% complete | `/speckit.implement` | Begin implementation |
-| tasks.md, partial | `/speckit.implement` | Continue implementation |
+| tasks.md, 0% or partial | `/speckit.implement` | Begin/continue implementation |
 | tasks.md, 100% complete | (none) | Ready for review/merge |
 
-Optional recommendations based on context:
-- If spec.md exists but no clarifications: Mention `/speckit.clarify` as optional
-- If tasks.md exists but not analyzed: Mention `/speckit.analyze` as optional
+Optionally mention `/speckit.clarify` (if spec exists, no clarifications) or `/speckit.analyze` (if tasks exist, not analyzed).
 
 ### 7. Generate Output
 
-> **Note:** `{CACHE_FILE}` (`{SPECS_DIR}/spec-status.md`) is written by the script and always reflects current state. Do **not** modify or rewrite it — it is maintained automatically.
+> `{CACHE_FILE}` is written by the script. Do **not** modify it manually.
 
 **Human-readable format** (default):
 
@@ -165,11 +116,11 @@ Features
 +-----------------+---------+------+-------+------------------+
 
 Legend: ✓ complete  ● in progress  ○ ready  - not started
-
-{FEATURE_DETAIL_SECTION if target feature selected}
-
-{EMPTY_STATE_MESSAGE if no features exist}
 ```
+
+If no features exist, show `(none)` row and message: `No features defined yet. Run /speckit.specify to create your first feature.`
+
+Mark current/active feature with `<`. Show `{FEATURE_DETAIL_SECTION}` after table when a target feature is selected.
 
 **Feature detail section**:
 
@@ -187,126 +138,13 @@ Next: /speckit.tasks
   Generate implementation tasks from your plan
 ```
 
-**Verbose additions** (when `--verbose`):
+**Verbose additions** (`--verbose`): Append per-phase task progress and per-checklist completion counts.
 
-```
-Task Progress:
-  Phase 1 - Setup:        ✓ 4/4 complete
-  Phase 2 - Foundation:   ✓ 3/3 complete
-  Phase 3 - US1 Login:    ● 5/8 in progress
-  Phase 4 - US2 Register: ○ 0/6 not started
-  Phase 5 - Polish:       - 0/3 blocked
-
-Checklists:
-  ✓ security.md    6/6
-  ● ux.md          8/12
-```
-
-**Empty state** (no features in specs/):
-
-```
-Spec-Driven Development Status
-
-Project: {project_name}
-Branch: {current_branch}
-Constitution: {constitution_status}
-
-Features
-+---------+---------+------+-------+-----------+
-| Feature | Specify | Plan | Tasks | Implement |
-+---------+---------+------+-------+-----------+
-| (none)  |         |      |       |           |
-+---------+---------+------+-------+-----------+
-
-No features defined yet.
-Run /speckit.specify to create your first feature.
-```
-
-**JSON format** (when `--json`):
-
-```json
-{
-  "project": "my-project",
-  "branch": "003-user-auth",
-  "is_feature_branch": true,
-  "constitution": {
-    "exists": true,
-    "version": "1.2.0"
-  },
-  "features": [
-    {
-      "name": "001-onboarding",
-      "path": "/path/to/specs/001-onboarding",
-      "stages": {
-        "specify": "complete",
-        "plan": "complete",
-        "tasks": "complete",
-        "implement": "complete"
-      },
-      "tasks": {
-        "total": 24,
-        "completed": 24,
-        "percent": 100
-      }
-    },
-    {
-      "name": "003-user-auth",
-      "path": "/path/to/specs/003-user-auth",
-      "is_current": true,
-      "stages": {
-        "specify": "complete",
-        "plan": "complete",
-        "tasks": "ready",
-        "implement": "not_started"
-      },
-      "tasks": null
-    }
-  ],
-  "current_feature": {
-    "name": "003-user-auth",
-    "artifacts": {
-      "spec.md": true,
-      "plan.md": true,
-      "tasks.md": false,
-      "research.md": true,
-      "data-model.md": true,
-      "quickstart.md": false,
-      "contracts/": true,
-      "checklists/": false
-    },
-    "checklists": [],
-    "next_action": {
-      "command": "/speckit.tasks",
-      "message": "Generate implementation tasks from your plan"
-    }
-  }
-}
-```
+**JSON format** (`--json`): Output the script's JSON enriched with `current_feature` detail (artifacts, checklists, next_action). Follow the same data structure the script returns.
 
 ## Operating Principles
 
-### Cache Maintenance
-
-- The script writes/updates `{SPECS_DIR}/spec-status.md` on every run — this is expected behavior
-- Do **not** manually edit `spec-status.md` — it is maintained automatically by the script
-- No other project files should be modified by this command
-
-### Context Efficiency
-
-- Scan only what's needed (file existence checks, not full content reads)
-- Parse tasks.md minimally (line matching, not full semantic analysis)
-- Keep output concise and actionable
-
-### Graceful Handling
-
-- Missing directories: Report as empty state
-- Missing files: Report as not yet created
-- Parse errors: Skip and continue, note in output if critical
-- Non-git repos: Function normally, note git status as unavailable
-
-### User Experience
-
-- Always show the features overview for project context
-- Clearly indicate current/active feature with `<` marker
-- Make next action obvious and specific
-- Support both quick checks (`/speckit.status.report`) and deep dives (`--verbose`)
+- **Cache**: `spec-status.md` is script-managed — never edit manually. No other project files should be modified.
+- **Efficiency**: File existence checks only, no full content reads. Use script's task counts, not manual parsing.
+- **Graceful handling**: Missing dirs = empty state, missing files = not yet created, parse errors = skip and note, non-git = note unavailable.
+- **UX**: Always show features overview, mark active feature with `<`, make next action obvious, support quick checks and `--verbose` deep dives.
