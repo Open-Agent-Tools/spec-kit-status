@@ -13,7 +13,7 @@ $ARGUMENTS
 
 ## Goal
 
-Provide a clear, at-a-glance view of project status and workflow progress — answering "Where am I and what should I do next?" Also writes/updates `{SPECS_DIR}/spec-status.md` as a cached status snapshot. (For artifact quality analysis, use `/speckit.analyze` instead.)
+Provide a clear, at-a-glance view of project status and workflow progress — answering "Where am I and what should I do next?" Always writes a fresh `{SPECS_DIR}/spec-status.md` status snapshot. (For artifact quality analysis, use `/speckit.analyze` instead.)
 
 **CRITICAL: You MUST run the shell script from the `scripts` frontmatter BEFORE doing anything else.** Use `sh` on macOS/Linux, `ps` on Windows. Execute from the repo root. The script discovers the repo layout, computes task counts, and writes the cache file. Do NOT skip this or replicate its logic manually.
 
@@ -33,12 +33,12 @@ Parse user input for:
 
 - **REPO_ROOT**: Project root directory
 - **SPECS_DIR**: `{REPO_ROOT}/specs` (fall back to `{REPO_ROOT}/.specify/specs`)
-- **CACHE_FILE**: `{SPECS_DIR}/spec-status.md` — maintained by the script automatically
+- **STATUS_FILE**: `{SPECS_DIR}/spec-status.md` — written fresh by the script on every run
 - **MEMORY_DIR**: `{REPO_ROOT}/.specify/memory` (fall back to `{REPO_ROOT}/memory`)
 - **CURRENT_BRANCH**: Current git branch
 - **HAS_GIT**: Whether project is a git repository
 
-The script returns pre-computed task counts for every feature — do **not** read individual `tasks.md` files.
+The script always does a fresh scan and returns pre-computed task counts for every feature — do **not** read individual `tasks.md` files.
 
 ### 2. Load Constitution Status
 
@@ -95,7 +95,7 @@ Optionally mention `/speckit.clarify` (if spec exists, no clarifications) or `/s
 
 ### 7. Generate Output
 
-> `{CACHE_FILE}` is written by the script. Do **not** modify it manually.
+> `{STATUS_FILE}` is written fresh by the script on every run. Do **not** modify it manually.
 
 **Human-readable format** (default):
 
@@ -144,7 +144,7 @@ Next: /speckit.tasks
 
 ## Operating Principles
 
-- **Cache**: `spec-status.md` is script-managed — never edit manually. No other project files should be modified.
+- **Status file**: `spec-status.md` is written fresh by the script on every run — never edit manually. No other project files should be modified.
 - **Efficiency**: File existence checks only, no full content reads. Use script's task counts, not manual parsing.
 - **Graceful handling**: Missing dirs = empty state, missing files = not yet created, parse errors = skip and note, non-git = note unavailable.
 - **UX**: Always show features overview, mark active feature with `<`, make next action obvious, support quick checks and `--verbose` deep dives.
