@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-04-04
+
+### Changed
+
+- Renamed command from `speckit.status.report` to `status-report.show` to comply with extension namespace validation
+
+## [1.2.0] - 2026-04-03
+
+### Changed
+
+- Removed cache logic — always performs a fresh scan and writes a new status file on every run
+
 ## [1.1.5] - 2026-03-25
 
 ### Changed
@@ -60,7 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `/speckit.status.report` command — display project status, feature progress, and recommended next actions
+- `/status-report.show` command — display project status, feature progress, and recommended next actions
 - Support for `--all`, `--verbose`, `--json`, and `--feature` flags
 - Bash discovery script (`scripts/bash/get-project-status.sh`)
 - PowerShell discovery script (`scripts/powershell/Get-ProjectStatus.ps1`)
@@ -70,6 +82,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Next action recommendations based on current state
 - JSON output format for machine-readable integration
 
+[1.2.1]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.2.1
+[1.2.0]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.2.0
 [1.1.5]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.1.5
 [1.1.4]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.1.4
 [1.1.3]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.1.3
