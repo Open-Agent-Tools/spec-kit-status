@@ -24,9 +24,9 @@ $ErrorActionPreference = 'Stop'
 
 # Define Unicode symbols as escape sequences so the script works
 # regardless of file encoding (BOM or no BOM on Windows).
-$SYM_CHECK  = [char]0x2713  # ✓
-$SYM_CIRCLE = [char]0x25CB  # ○
-$SYM_BULLET = [char]0x25CF  # ●
+$SYM_CHECK  = [string][char]0x2713  # ✓
+$SYM_CIRCLE = [string][char]0x25CB  # ○
+$SYM_BULLET = [string][char]0x25CF  # ●
 
 # Show help if requested
 if ($Help) {
