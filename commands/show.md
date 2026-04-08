@@ -1,5 +1,5 @@
 ---
-description: Display project status, feature progress, and recommended next actions across the spec-driven development workflow.
+description: Project status, feature progress, and next-action recommendations for spec-driven workflows.
 scripts:
   sh: .specify/extensions/status-report/scripts/bash/get-project-status.sh --json
   ps: .specify/extensions/status-report/scripts/powershell/Get-ProjectStatus.ps1 -Json

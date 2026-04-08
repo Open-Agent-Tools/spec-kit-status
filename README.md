@@ -17,7 +17,7 @@ A [Spec Kit](https://github.com/github/spec-kit) extension that adds the `/speck
 directly from GitHub:
 
 ```bash
-specify extension add --from https://github.com/Open-Agent-Tools/spec-kit-status/archive/refs/tags/v1.2.4.zip EXTENSION
+specify extension add --from https://github.com/Open-Agent-Tools/spec-kit-status/archive/refs/tags/v1.2.5.zip EXTENSION
 ```
 
 ## Usage
