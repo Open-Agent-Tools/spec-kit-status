@@ -40,7 +40,7 @@ The script always does a fresh scan and returns pre-computed task counts for eve
 ### 2. Load Constitution Status
 
 Check `{MEMORY_DIR}/constitution.md`:
-- Exists: `✓ Defined (v1.2.0)` (extract version from `## Version` or `version:` frontmatter) or `✓ Defined`
+- Exists: `✓ Defined (v1.2.0)` (extract version from `## Version` header or `version:` YAML field at top of file) or `✓ Defined`
 - Missing: `○ Not defined`
 
 ### 3. Scan All Features
