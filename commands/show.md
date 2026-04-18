@@ -12,7 +12,9 @@ Provide a clear, at-a-glance view of project status and workflow progress — an
 - macOS/Linux: `sh .specify/extensions/status-report/scripts/bash/get-project-status.sh --json`
 - Windows: `pwsh .specify/extensions/status-report/scripts/powershell/Get-ProjectStatus.ps1 -Json`
 
-The script discovers the repo layout, computes task counts, and writes the cache file. Do NOT skip this or replicate its logic manually.
+The script discovers the repo layout, computes task counts, and writes the cache file.
+
+**NEVER scan directories, read files, or infer project state manually. All data must come from the script JSON output. If the script fails, report the error and stop.**
 
 ## Input Parsing
 
