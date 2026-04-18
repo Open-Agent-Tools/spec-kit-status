@@ -43,40 +43,51 @@ Use `constitution.exists` from the script JSON output:
 - `true`: `✓ Defined`
 - `false`: `○ Not defined`
 
-### 3. Scan All Features
+### 3. Build Feature Table
 
-Scan `{SPECS_DIR}` for directories matching `NNN-*` (3-digit prefix). For each, detect stages:
+Use the `features` array from the script JSON. Each entry has `has_spec`, `has_plan`, `has_tasks`, `tasks_total`, `tasks_completed`, and `is_current`. Do not scan directories.
 
 | Stage | ✓ | ○ | - |
 |-------|---|---|---|
-| Specify | `spec.md` exists | missing | — |
-| Plan | `plan.md` exists | missing + spec exists | no spec |
-| Tasks | `tasks.md` exists | missing + plan exists | no plan |
+| Specify | `has_spec: true` | `false` | — |
+| Plan | `has_plan: true` | `false` + has spec | no spec |
+| Tasks | `has_tasks: true` | `false` + has plan | no plan |
 | Implement | see below | | |
 
-**Implementation stage** (uses `tasks_total`/`tasks_completed` from script JSON — do NOT count lines):
+**Implementation stage** (from `tasks_total`/`tasks_completed`):
 - `tasks_total` is 0: `○ Ready`
 - `tasks_completed == tasks_total`: `✓ Complete`
 - Partial: `● {completed}/{total} ({percent}%)`
 
 ### 4. Determine Target Feature
 
+Use `target_feature`, `is_feature_branch`, and `branch` from the script JSON:
+
 1. `--all` flag: overview only, no detail section
-2. Feature specified (positional or `--feature`): use that feature
-3. On feature branch (matches `NNN-*`): use current branch feature
-4. On non-feature branch (e.g., `main`): show `ℹ Not on a feature branch`, overview only
+2. Feature specified (positional or `--feature`): match against `features[].name`
+3. `is_feature_branch: true`: use `target_feature`
+4. `is_feature_branch: false`: show `ℹ Not on a feature branch`, overview only
 
 ### 5. Build Feature Detail (if target feature selected)
 
-**Artifacts** — check existence of each in `{FEATURE_DIR}/`:
+Use fields from the matching feature object in the script JSON — do not read files:
 
-`spec.md`, `plan.md`, `tasks.md`, `research.md`, `data-model.md`, `quickstart.md`, `contracts/` (non-empty dir), `checklists/` (non-empty dir)
+| Field | Artifact |
+|-------|----------|
+| `has_spec` | spec.md |
+| `has_plan` | plan.md |
+| `has_tasks` | tasks.md |
+| `has_research` | research.md |
+| `has_data_model` | data-model.md |
+| `has_quickstart` | quickstart.md |
+| `has_contracts` | contracts/ |
+| `has_checklists` | checklists/ |
 
 Display: `✓` exists, `○` ready to create (prerequisite met), `-` not applicable yet
 
-**Checklists** (if `checklists/` exists): For each `.md` file, count `- [ ]`/`- [x]`/`- [X]` items. Format: `✓ {name} {done}/{total}` or `● {name} {done}/{total}`
+**Checklists**: use `checklist_files` array from the script JSON. Format: `✓ {name} {done}/{total}` or `● {name} {done}/{total}`
 
-**Task progress** (`--verbose` only, when `tasks.md` exists): Parse phase sections (headers containing "Phase"), show per-phase: `✓` complete, `●` in progress, `○` not started, `-` blocked
+**Task progress** (`--verbose` only): use `tasks_total`/`tasks_completed` from the script JSON per feature.
 
 ### 6. Determine Next Action
 
