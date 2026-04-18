@@ -1,10 +1,3 @@
----
-description: Project status, feature progress, and next-action recommendations for spec-driven workflows.
-scripts:
-  sh: .specify/extensions/status-report/scripts/bash/get-project-status.sh --json
-  ps: .specify/extensions/status-report/scripts/powershell/Get-ProjectStatus.ps1 -Json
----
-
 ## User Input
 
 ```text
@@ -15,7 +8,11 @@ $ARGUMENTS
 
 Provide a clear, at-a-glance view of project status and workflow progress — answering "Where am I and what should I do next?" Always writes a fresh `{SPECS_DIR}/spec-status.md` status snapshot. (For artifact quality analysis, use `/speckit.analyze` instead.)
 
-**CRITICAL: You MUST run the shell script from the `scripts` frontmatter BEFORE doing anything else.** Use `sh` on macOS/Linux, `ps` on Windows. Execute from the repo root. The script discovers the repo layout, computes task counts, and writes the cache file. Do NOT skip this or replicate its logic manually.
+**CRITICAL: Run this script BEFORE doing anything else (execute from repo root):**
+- macOS/Linux: `sh .specify/extensions/status-report/scripts/bash/get-project-status.sh --json`
+- Windows: `pwsh .specify/extensions/status-report/scripts/powershell/Get-ProjectStatus.ps1 -Json`
+
+The script discovers the repo layout, computes task counts, and writes the cache file. Do NOT skip this or replicate its logic manually.
 
 ## Input Parsing
 
@@ -29,7 +26,7 @@ Parse user input for:
 
 ### 1. Initialize Context (MANDATORY — run the script)
 
-**Run the script** from the `scripts` frontmatter from the repo root. Parse its JSON output to populate:
+**Run the script** above from the repo root. Parse its JSON output to populate:
 
 - **REPO_ROOT**: Project root directory
 - **SPECS_DIR**: `{REPO_ROOT}/specs` (fall back to `{REPO_ROOT}/.specify/specs`)

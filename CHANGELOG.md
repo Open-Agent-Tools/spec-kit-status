@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.6] - 2026-04-18
+
+### Changed
+
+- Removed `scripts:` frontmatter from `commands/show.md` — speckit now wraps commands as skills, which don't support the `scripts:` key
+- Inlined explicit script paths directly in the command body so the execution instruction is self-contained and works in both skill and command contexts
+
 ## [1.2.5] - 2026-04-08
 
 ### Changed
