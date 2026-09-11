@@ -3,7 +3,7 @@ schema_version: "1.0"
 extension:
   id: "status-report"
   name: "Status Report"
-  version: "1.4.0"
+  version: "1.4.1"
   description: "Project status, feature progress, and next-action recommendations for spec-driven workflows."
   category: "visibility"
   effect: "read-write"

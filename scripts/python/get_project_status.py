@@ -279,7 +279,13 @@ def main() -> int:
     git_root = git("rev-parse", "--show-toplevel")
     if git_root:
         repo_root, has_git = Path(git_root), True
-        current_branch = git("rev-parse", "--abbrev-ref", "HEAD") or "unknown"
+        # symbolic-ref works in a repo with no commits, where rev-parse prints
+        # "HEAD" and exits non-zero. Keep rev-parse for detached HEAD.
+        current_branch = (
+            git("symbolic-ref", "--short", "HEAD")
+            or git("rev-parse", "--abbrev-ref", "HEAD")
+            or "unknown"
+        )
     else:
         found = find_repo_root(script_dir)
         if found is None:

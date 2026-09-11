@@ -202,7 +202,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if git rev-parse --show-toplevel >/dev/null 2>&1; then
     REPO_ROOT=$(git rev-parse --show-toplevel)
     HAS_GIT=true
-    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+    # symbolic-ref works in a repo with no commits, where rev-parse prints
+    # "HEAD" to stdout *and* exits non-zero. Keep rev-parse for detached HEAD.
+    CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null) || \
+        CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || \
+        CURRENT_BRANCH=""
+    [ -n "$CURRENT_BRANCH" ] || CURRENT_BRANCH="unknown"
 else
     REPO_ROOT="$(find_repo_root "$SCRIPT_DIR")"
     if [ -z "$REPO_ROOT" ]; then

@@ -133,6 +133,25 @@ check_runtime() {
     grep -v "spec-status:" specs/spec-status.md > "$WORK/statusfile-$RUNTIME.txt"
 }
 
+# A repo with no commits: rev-parse prints "HEAD" to stdout and exits non-zero,
+# which a naive fallback concatenates into "HEADunknown".
+check_empty_repo() {
+    RUNTIME="$1"
+    local empty="$WORK/empty-$RUNTIME" json
+    rm -rf "$empty"
+    mkdir -p "$empty/specs/001-fresh" "$empty/.specify"
+    (cd "$empty" && git init -q . && git config user.email t@e.com && git config user.name t)
+    echo "# Spec" > "$empty/specs/001-fresh/spec.md"
+    json=$(cd "$empty" && run_status --json)
+    assert_json "branch is sane with no commits" \
+        "d['branch'] in ('main','master')" "True" "$json"
+    assert_json "discovery works with no commits" "d['feature_count']" "1" "$json"
+    # feature.json is the only context here; the branch is main, not a feature.
+    echo '{"feature_directory":"specs/001-fresh"}' > "$empty/.specify/feature.json"
+    json=$(cd "$empty" && run_status --json)
+    assert_json "feature resolves with no commits" "d['current_feature']" "001-fresh" "$json"
+}
+
 RUNTIMES="bash python"
 if command -v pwsh >/dev/null 2>&1; then
     RUNTIMES="$RUNTIMES powershell"
@@ -142,6 +161,8 @@ fi
 
 for rt in $RUNTIMES; do
     check_runtime "$rt"
+    check_empty_repo "$rt"
+    cd "$WORK"
 done
 
 # ── Cross-runtime parity ──────────────────────────────────────────────────────

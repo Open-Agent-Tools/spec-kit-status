@@ -168,8 +168,11 @@ try {
     if ($LASTEXITCODE -eq 0) {
         $RepoRoot = $gitRoot
         $HasGit = $true
-        $CurrentBranch = git rev-parse --abbrev-ref HEAD 2>$null
-        if ($LASTEXITCODE -ne 0) { $CurrentBranch = "unknown" }
+        # symbolic-ref works in a repo with no commits, where rev-parse prints
+        # "HEAD" and exits non-zero. Keep rev-parse for detached HEAD.
+        $CurrentBranch = git symbolic-ref --short HEAD 2>$null
+        if ($LASTEXITCODE -ne 0) { $CurrentBranch = git rev-parse --abbrev-ref HEAD 2>$null }
+        if ($LASTEXITCODE -ne 0 -or -not $CurrentBranch) { $CurrentBranch = "unknown" }
     } else {
         throw "Not a git repo"
     }

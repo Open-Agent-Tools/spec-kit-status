@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-09-10
+
+### Fixed
+
+- **Branch read as `HEADunknown` in a repo with no commits.** `git rev-parse --abbrev-ref HEAD`
+  prints `HEAD` to stdout *and* exits non-zero before the first commit, so the fallback
+  concatenated onto it. All three runtimes now try `git symbolic-ref --short HEAD` first, which
+  reports the real branch pre-commit, and keep `rev-parse` for detached HEAD. Found by
+  installing the v1.4.0 release into a real Spec Kit 1.0.5 project.
+
 ## [1.4.0] - 2026-09-10
 
 Compatibility pass against Spec Kit 1.0.5.
@@ -210,6 +220,7 @@ Compatibility pass against Spec Kit 1.0.5.
 - Next action recommendations based on current state
 - JSON output format for machine-readable integration
 
+[1.4.1]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.4.1
 [1.4.0]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.4.0
 [1.3.4]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.3.4
 [1.3.3]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.3.3
