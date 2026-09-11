@@ -1,3 +1,11 @@
+---
+description: "Show spec-driven development status: every feature's workflow stage, artifact and task progress for the current feature, and the exact command to run next."
+scripts:
+  sh: scripts/bash/get-project-status.sh --json
+  ps: scripts/powershell/Get-ProjectStatus.ps1 -Json
+  py: scripts/python/get_project_status.py --json
+---
+
 ## User Input
 
 ```text
@@ -6,13 +14,19 @@ $ARGUMENTS
 
 ## Goal
 
-Provide a clear, at-a-glance view of project status and workflow progress — answering "Where am I and what should I do next?" Always writes a fresh `{SPECS_DIR}/spec-status.md` status snapshot. (For artifact quality analysis, use `/speckit.analyze` instead.)
+Provide a clear, at-a-glance view of project status and workflow progress — answering "Where am I and what should I do next?" Always writes a fresh `{SPECS_DIR}/spec-status.md` status snapshot. (For artifact quality analysis, use `__SPECKIT_COMMAND_ANALYZE__` instead.)
 
 **CRITICAL: Run this script BEFORE doing anything else (execute from repo root):**
-- macOS/Linux: `sh .specify/extensions/status-report/scripts/bash/get-project-status.sh --json`
-- Windows: `pwsh .specify/extensions/status-report/scripts/powershell/Get-ProjectStatus.ps1 -Json`
 
-The script discovers the repo layout, computes task counts, and writes the cache file.
+```
+{SCRIPT}
+```
+
+If that placeholder was not substituted, run the script for your platform directly:
+`sh .specify/extensions/status-report/scripts/bash/get-project-status.sh --json` on macOS/Linux,
+`pwsh .specify/extensions/status-report/scripts/powershell/Get-ProjectStatus.ps1 -Json` on Windows.
+
+The script discovers the repo layout, resolves the current feature, computes task counts, and writes the status file.
 
 **NEVER scan directories, read files, or infer project state manually. All data must come from the script JSON output. If the script fails, report the error and stop.**
 
@@ -36,6 +50,8 @@ Parse user input for:
 - **MEMORY_DIR**: `{REPO_ROOT}/.specify/memory` (fall back to `{REPO_ROOT}/memory`)
 - **CURRENT_BRANCH**: Current git branch
 - **HAS_GIT**: Whether project is a git repository
+- **CURRENT_FEATURE**: The feature the project is on, or `null` if none (`current_feature`)
+- **FEATURE_SOURCE**: How that was resolved — `env`, `feature.json`, or `branch` (`feature_source`)
 
 The script always does a fresh scan and returns pre-computed task counts for every feature — do **not** read individual `tasks.md` files.
 
@@ -63,12 +79,18 @@ Use the `features` array from the script JSON. Each entry has `has_spec`, `has_p
 
 ### 4. Determine Target Feature
 
-Use `target_feature`, `is_feature_branch`, and `branch` from the script JSON:
+Use `target_feature`, `current_feature`, and `feature_source` from the script JSON. The
+script already applies the precedence spec-kit itself uses (`SPECIFY_FEATURE_DIRECTORY`,
+then `.specify/feature.json`, then `SPECIFY_FEATURE`, then the git branch), so
+`target_feature` is the answer in every case except `--all`:
 
 1. `--all` flag: overview only, no detail section
-2. Feature specified (positional or `--feature`): match against `features[].name`
-3. `is_feature_branch: true`: use `target_feature`
-4. `is_feature_branch: false`: show `ℹ Not on a feature branch`, overview only
+2. Otherwise `target_feature` is the feature to detail — it already reflects an explicit
+   `--feature` or positional argument when one was given, and the current feature otherwise
+3. `target_feature: null`: show `ℹ No current feature`, overview only
+
+Never infer the current feature from the branch name yourself — the project may not use a
+branch per feature.
 
 ### 5. Build Feature Detail (if target feature selected)
 
@@ -95,13 +117,20 @@ Display: `✓` exists, `○` ready to create (prerequisite met), `-` not applica
 
 | Current State | Next Action | Message |
 |---------------|-------------|---------|
-| No spec.md | `/speckit.specify` | Create feature specification |
-| spec.md, no plan.md | `/speckit.plan` | Create implementation plan |
-| plan.md, no tasks.md | `/speckit.tasks` | Generate implementation tasks |
-| tasks.md, 0% or partial | `/speckit.implement` | Begin/continue implementation |
+| No spec.md | `__SPECKIT_COMMAND_SPECIFY__` | Create feature specification |
+| spec.md, no plan.md | `__SPECKIT_COMMAND_PLAN__` | Create implementation plan |
+| plan.md, no tasks.md | `__SPECKIT_COMMAND_TASKS__` | Generate implementation tasks |
+| tasks.md, 0% or partial | `__SPECKIT_COMMAND_IMPLEMENT__` | Begin/continue implementation |
 | tasks.md, 100% complete | (none) | Ready for review/merge |
 
-Optionally mention `/speckit.clarify` (if spec exists, no clarifications) or `/speckit.analyze` (if tasks exist, not analyzed).
+Optionally mention:
+
+- `__SPECKIT_COMMAND_CLARIFY__` — spec exists with no clarifications recorded
+- `__SPECKIT_COMMAND_CHECKLIST__` — no `checklists/` for a feature that has a plan
+- `__SPECKIT_COMMAND_ANALYZE__` — tasks exist and have not been analyzed
+- `__SPECKIT_COMMAND_CONVERGE__` — tasks read 100% complete but the feature is not yet merged, to catch unbuilt work
+
+Write command references as `__SPECKIT_COMMAND_*__` tokens, never as literal `/speckit.*` text. Spec Kit renders each token using the active agent's invocation style, so a literal is correct for one agent and wrong for the rest.
 
 ### 7. Generate Output
 
@@ -128,7 +157,7 @@ Features
 Legend: ✓ complete  ● in progress  ○ ready  - not started
 ```
 
-If no features exist, show `(none)` row and message: `No features defined yet. Run /speckit.specify to create your first feature.`
+If no features exist, show `(none)` row and message: `No features defined yet. Run __SPECKIT_COMMAND_SPECIFY__ to create your first feature.`
 
 Mark current/active feature with `<`. Show `{FEATURE_DETAIL_SECTION}` after table when a target feature is selected.
 
@@ -144,7 +173,7 @@ Artifacts:
 
 Checklists: None defined
 
-Next: /speckit.tasks
+Next: __SPECKIT_COMMAND_TASKS__
   Generate implementation tasks from your plan
 ```
 

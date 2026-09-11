@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-09-10
+
+Compatibility pass against Spec Kit 1.0.5.
+
+### Fixed
+
+- **Current feature detection ignored `.specify/feature.json`** — Spec Kit 1.0.x resolves the
+  active feature via `SPECIFY_FEATURE_DIRECTORY`, then `.specify/feature.json`, then
+  `SPECIFY_FEATURE`, and only then the git branch. Both scripts checked the branch alone, so
+  projects that do not use a branch per feature always reported no current feature. The scripts
+  now mirror Spec Kit's own precedence.
+- **Timestamp and four-digit features were invisible** — `create-new-feature.sh --timestamp`
+  produces `YYYYMMDD-HHMMSS-slug`, and Spec Kit matches sequential prefixes of three digits or
+  more. The discovery glob required exactly three digits followed by a hyphen and silently
+  skipped both shapes.
+- **PowerShell never received the v1.2.0 cache removal** — the Windows script still served
+  unchanged features from `spec-status.md` via git staleness detection and emitted a
+  `from_cache` field that Bash had dropped, so Windows users got different data and a different
+  JSON shape. The cache path is gone; both scripts now do a fresh scan.
+- **README install command was not runnable** — it read
+  `specify extension add --from <url> EXTENSION` with the literal placeholder in the argument
+  position. The extension id comes first.
+- **Bash wrote a misaligned status table** — `printf`'s `%-Ns` pads by bytes, and the status
+  symbols are three-byte UTF-8, so every column holding one came out two characters short in
+  `spec-status.md`. Padding is now character-based. PowerShell and Python were already correct;
+  the test asserts all three render the file identically.
+
+### Added
+
+- `current_feature` and `feature_source` fields in JSON output — the resolved feature and how it
+  was found (`env`, `feature.json`, or `branch`)
+- `category` and `effect` in `extension.yml`, matching the bundled extensions. `effect` is
+  `read-write`: the command writes `specs/spec-status.md` on every run.
+- **Python runtime** (`scripts/python/get_project_status.py`), declared as `py` in the command
+  frontmatter alongside `sh` and `ps`. Spec Kit 1.0.x ships all three runtimes and selects the
+  one a project was initialized with; previously a python-variant project fell back to bash or
+  powershell.
+- `tests/test-status.sh` — runnable self-check covering feature discovery, every branch of the
+  resolution precedence, and cross-runtime parity. Runs the full suite against each installed
+  runtime and asserts they agree on both JSON output and the rendered status file.
+
+### Changed
+
+- **Command frontmatter restored.** v1.2.6 removed it on the premise that skills do not support
+  the `scripts:` key. They do: `_register_extension_skills` runs frontmatter through the same
+  path adjuster as commands, and extension-local `scripts/...` is rewritten to
+  `.specify/extensions/status-report/scripts/...`. Dropping the block also dropped
+  `description:`, which is the text a skills-based agent reads when deciding whether to trigger
+  the command — Spec Kit had been substituting a generic fallback. The body now uses `{SCRIPT}`,
+  which resolves to the right script for the platform, with the explicit paths kept as a
+  fallback line.
+- **Command references are now `__SPECKIT_COMMAND_*__` tokens** rather than literal `/speckit.*`
+  text. Spec Kit renders each token in the active agent's invocation style, so the literals were
+  correct only for slash-and-dot agents and wrong for Codex, Kimi and the rest.
+- `__SPECKIT_COMMAND_CHECKLIST__` and `__SPECKIT_COMMAND_CONVERGE__` added to the next-action
+  recommendations — both are core commands that postdate the original table.
+- **`requires.speckit_version` raised to `>=1.0.0`.** The extension was declaring `>=0.1.0`
+  while everything it targets is verified only against 1.0.5. Spec Kit now refuses the install
+  on 0.x rather than silently serving degraded feature detection.
+- `target_feature` now falls back to the current feature when no explicit `--feature` or
+  positional argument is given. It was previously null in that case, leaving the command spec's
+  step 4 with nothing to reference.
+- `commands/show.md` step 4 drives the detail section from `target_feature` and forbids
+  inferring the current feature from the branch name
+
 ## [1.3.4] - 2026-04-18
 
 ### Changed
@@ -145,6 +210,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Next action recommendations based on current state
 - JSON output format for machine-readable integration
 
+[1.4.0]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.4.0
+[1.3.4]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.3.4
+[1.3.3]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.3.3
+[1.3.2]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.3.2
+[1.3.1]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.3.1
+[1.3.0]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.3.0
+[1.2.6]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.2.6
 [1.2.5]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.2.5
 [1.2.4]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.2.4
 [1.2.3]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.2.3

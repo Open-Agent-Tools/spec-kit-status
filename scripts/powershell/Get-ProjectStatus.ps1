@@ -3,8 +3,7 @@
 # Project status discovery script for /speckit.status.report command
 #
 # This script discovers project structure and artifact existence.
-# It counts task completion and maintains a cache file (specs/spec-status.md)
-# so that only feature folders changed since the last cache commit are rescanned.
+# It counts task completion and writes a fresh specs/spec-status.md on every run.
 #
 # Usage: ./Get-ProjectStatus.ps1 [OPTIONS]
 #
@@ -127,14 +126,38 @@ function Count-Tasks {
     return $result
 }
 
-# Function to extract a field value from a cache comment line
-function Read-CacheField {
-    param([string]$Line, [string]$Field)
+# Safely read .specify/feature.json's "feature_directory" value.
+# Returns an empty string when the file is missing or unparseable.
+function Read-FeatureJson {
+    param([string]$RepoRoot)
 
-    if ($Line -match "${Field}=([^ >]+)") {
-        return $matches[1]
+    $fj = Join-Path $RepoRoot ".specify/feature.json"
+    if (-not (Test-Path $fj -PathType Leaf)) { return "" }
+    try {
+        $data = Get-Content $fj -Raw | ConvertFrom-Json
+        if ($data.feature_directory) { return $data.feature_directory }
+    } catch {
+        # Ignore parse errors — treat as no feature context
     }
     return ""
+}
+
+# Match a feature identifier against a real feature directory: exact name first,
+# then leading number prefix, since a branch name may abbreviate the directory.
+function Resolve-FeatureName {
+    param([string]$Id, [string[]]$Candidates)
+
+    if (-not $Id) { return $null }
+    foreach ($c in $Candidates) {
+        if ($c -eq $Id) { return $c }
+    }
+    if ($Id -match '^(\d{3}\d*)-') {
+        $prefix = $matches[1]
+        foreach ($c in $Candidates) {
+            if ($c -like "$prefix-*") { return $c }
+        }
+    }
+    return $null
 }
 
 # Resolve repository root
@@ -185,136 +208,86 @@ $ConstitutionExists = Test-Path $ConstitutionPath -PathType Leaf
 # Get project name
 $ProjectName = Get-ProjectName $RepoRoot
 
-# Check if on feature branch
-$IsFeatureBranch = $CurrentBranch -match '^\d{3}-'
+# Check if on a feature branch. Spec-kit numbers features with three digits or
+# more, and --timestamp features are prefixed YYYYMMDD-HHMMSS.
+$IsFeatureBranch = $CurrentBranch -match '^\d{3}\d*-'
 
-# Collect all features
+# Collect all features. The pattern must admit sequential prefixes of three
+# digits or more (001-, 1000-) as well as timestamp prefixes (20260910-123456-).
 $Features = @()
 if (Test-Path $SpecsDir -PathType Container) {
-    $Features = @(Get-ChildItem $SpecsDir -Directory | Where-Object { $_.Name -match '^\d{3}-' } | Sort-Object Name | Select-Object -ExpandProperty Name)
+    $Features = @(Get-ChildItem $SpecsDir -Directory | Where-Object { $_.Name -match '^\d{3}\d*-' } | Sort-Object Name | Select-Object -ExpandProperty Name)
 }
-
-# ── Cache setup ───────────────────────────────────────────────────────────────
 
 $CacheFile = Join-Path $SpecsDir "spec-status.md"
 
-# Relative specs path for git commands (forward slashes)
-$SpecsRel = $SpecsDir.Replace($RepoRoot, "").TrimStart([IO.Path]::DirectorySeparatorChar).Replace([IO.Path]::DirectorySeparatorChar, "/")
+# ── Resolve the current feature ───────────────────────────────────────────────
+# Spec-kit 1.0.x no longer treats the git branch as authoritative. Mirror the
+# precedence in its own common.ps1: SPECIFY_FEATURE_DIRECTORY, then
+# .specify/feature.json, then SPECIFY_FEATURE, then the branch as a legacy
+# fallback.
 
-# Find last commit that wrote the cache
-$LastCacheCommit = $null
-if ($HasGit -and (Test-Path $CacheFile)) {
-    $result = git log -1 --format="%H" -- "$SpecsRel/spec-status.md" 2>$null
-    if ($LASTEXITCODE -eq 0 -and $result) { $LastCacheCommit = $result }
-}
-
-# Determine stale features
-$StaleFeatures = @{}
-if (-not $LastCacheCommit) {
-    # No cache in git history — rescan everything
-    foreach ($f in $Features) { $StaleFeatures[$f] = $true }
+$CurrentFeature = $null
+$FeatureSource = $null
+if ($env:SPECIFY_FEATURE_DIRECTORY) {
+    $CurrentFeature = Split-Path $env:SPECIFY_FEATURE_DIRECTORY.TrimEnd('/', '\') -Leaf
+    $FeatureSource = "env"
 } else {
-    # Collect changed paths since last cache commit, excluding the cache file itself
-    $Changed = @()
-    $changed1 = git diff --name-only $LastCacheCommit HEAD -- "$SpecsRel/" 2>$null
-    $changed2 = git diff --name-only -- "$SpecsRel/" 2>$null
-    $changed3 = git diff --cached --name-only -- "$SpecsRel/" 2>$null
-    $Changed = @($changed1) + @($changed2) + @($changed3) | Where-Object { $_ -and $_ -notmatch 'spec-status\.md' } | Sort-Object -Unique
-
-    $cacheContent = if (Test-Path $CacheFile) { Get-Content $CacheFile -Raw } else { "" }
-
-    foreach ($f in $Features) {
-        $featurePrefix = "$SpecsRel/$f/"
-        $hasChanges = $Changed | Where-Object { $_.StartsWith($featurePrefix) }
-        $inCache = $cacheContent -match "^<!-- feature: $([regex]::Escape($f)) "
-        if ($hasChanges -or -not $inCache) {
-            $StaleFeatures[$f] = $true
-        }
+    $featureJsonDir = Read-FeatureJson $RepoRoot
+    if ($featureJsonDir) {
+        $CurrentFeature = Split-Path $featureJsonDir.TrimEnd('/', '\') -Leaf
+        $FeatureSource = "feature.json"
+    } elseif ($env:SPECIFY_FEATURE) {
+        $CurrentFeature = $env:SPECIFY_FEATURE
+        $FeatureSource = "env"
+    } elseif ($CurrentBranch) {
+        $CurrentFeature = $CurrentBranch
+        $FeatureSource = "branch"
     }
 }
+
+$CurrentFeature = Resolve-FeatureName $CurrentFeature $Features
+if (-not $CurrentFeature) { $FeatureSource = $null }
 
 # ── Per-feature data collection ───────────────────────────────────────────────
 
 $FeatureData = @{}
-$cacheLines = @{}
-
-# Pre-load cache lines for fresh features
-if ($LastCacheCommit -and (Test-Path $CacheFile)) {
-    foreach ($line in (Get-Content $CacheFile)) {
-        if ($line -match '^<!-- feature: (\S+) ') {
-            $cacheLines[$matches[1]] = $line
-        }
-    }
-}
 
 foreach ($f in $Features) {
     $featureDir = Join-Path $SpecsDir $f
 
-    # Determine if current feature
-    $isCurrent = $false
-    if ($IsFeatureBranch -and $CurrentBranch -match '^(\d{3})-' -and $f -match '^(\d{3})-') {
-        $currentPrefix = $CurrentBranch -replace '^(\d{3})-.*', '$1'
-        $featurePrefix = $f -replace '^(\d{3})-.*', '$1'
-        if ($currentPrefix -eq $featurePrefix) { $isCurrent = $true }
+    $isCurrent = ($CurrentFeature -and $f -eq $CurrentFeature)
+
+    $checklistsDir = Join-Path $featureDir "checklists"
+    $hasChecklists = Test-Exists $checklistsDir
+    $checklistFiles = @()
+    if ($hasChecklists) {
+        $checklistFiles = @(Get-ChildItem $checklistsDir -Filter "*.md" -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name | Sort-Object)
     }
 
-    if ($StaleFeatures.ContainsKey($f)) {
-        # ── Fresh scan ────────────────────────────────────────────────────────
-        $checklistsDir = Join-Path $featureDir "checklists"
-        $hasChecklists = Test-Exists $checklistsDir
-        $checklistFiles = @()
-        if ($hasChecklists) {
-            $checklistFiles = @(Get-ChildItem $checklistsDir -Filter "*.md" -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name | Sort-Object)
-        }
+    $tasks = Count-Tasks (Join-Path $featureDir "tasks.md")
 
-        $tasks = Count-Tasks (Join-Path $featureDir "tasks.md")
-
-        $FeatureData[$f] = [ordered]@{
-            name             = $f
-            path             = $featureDir
-            is_current       = $isCurrent
-            has_spec         = Test-Exists (Join-Path $featureDir "spec.md")
-            has_plan         = Test-Exists (Join-Path $featureDir "plan.md")
-            has_tasks        = Test-Exists (Join-Path $featureDir "tasks.md")
-            has_research     = Test-Exists (Join-Path $featureDir "research.md")
-            has_data_model   = Test-Exists (Join-Path $featureDir "data-model.md")
-            has_quickstart   = Test-Exists (Join-Path $featureDir "quickstart.md")
-            has_contracts    = Test-Exists (Join-Path $featureDir "contracts")
-            has_checklists   = $hasChecklists
-            checklist_files  = $checklistFiles
-            tasks_total      = $tasks.Total
-            tasks_completed  = $tasks.Completed
-            from_cache       = $false
-        }
-    } else {
-        # ── Load from cache ───────────────────────────────────────────────────
-        $line = if ($cacheLines.ContainsKey($f)) { $cacheLines[$f] } else { "" }
-        $checklistFilesStr = Read-CacheField $line "checklist_files"
-        $checklistFiles = if ($checklistFilesStr) { @($checklistFilesStr -split ',') } else { @() }
-
-        $FeatureData[$f] = [ordered]@{
-            name             = $f
-            path             = $featureDir
-            is_current       = $isCurrent
-            has_spec         = (Read-CacheField $line "has_spec") -eq "true"
-            has_plan         = (Read-CacheField $line "has_plan") -eq "true"
-            has_tasks        = (Read-CacheField $line "has_tasks") -eq "true"
-            has_research     = (Read-CacheField $line "has_research") -eq "true"
-            has_data_model   = (Read-CacheField $line "has_data_model") -eq "true"
-            has_quickstart   = (Read-CacheField $line "has_quickstart") -eq "true"
-            has_contracts    = (Read-CacheField $line "has_contracts") -eq "true"
-            has_checklists   = (Read-CacheField $line "has_checklists") -eq "true"
-            checklist_files  = $checklistFiles
-            tasks_total      = [int](Read-CacheField $line "tasks_total")
-            tasks_completed  = [int](Read-CacheField $line "tasks_completed")
-            from_cache       = $true
-        }
+    $FeatureData[$f] = [ordered]@{
+        name             = $f
+        path             = $featureDir
+        is_current       = $isCurrent
+        has_spec         = Test-Exists (Join-Path $featureDir "spec.md")
+        has_plan         = Test-Exists (Join-Path $featureDir "plan.md")
+        has_tasks        = Test-Exists (Join-Path $featureDir "tasks.md")
+        has_research     = Test-Exists (Join-Path $featureDir "research.md")
+        has_data_model   = Test-Exists (Join-Path $featureDir "data-model.md")
+        has_quickstart   = Test-Exists (Join-Path $featureDir "quickstart.md")
+        has_contracts    = Test-Exists (Join-Path $featureDir "contracts")
+        has_checklists   = $hasChecklists
+        checklist_files  = $checklistFiles
+        tasks_total      = $tasks.Total
+        tasks_completed  = $tasks.Completed
     }
 }
 
-# ── Write cache file ──────────────────────────────────────────────────────────
+# ── Write status file ─────────────────────────────────────────────────────────
 
-function Write-Cache {
+function Write-StatusFile {
     param([string]$CachePath)
 
     $currentCommit = ""
@@ -380,7 +353,7 @@ function Write-Cache {
 
 if ((Test-Path $SpecsDir -PathType Container) -or $Features.Count -gt 0) {
     New-Item -ItemType Directory -Path $SpecsDir -Force | Out-Null
-    Write-Cache $CacheFile
+    Write-StatusFile $CacheFile
 }
 
 # ── Resolve target feature ────────────────────────────────────────────────────
@@ -421,6 +394,10 @@ if ($Json) {
         $featuresInfo += $FeatureData[$f]
     }
 
+    # target_feature is what the caller asked for, falling back to whatever
+    # feature the project is currently on.
+    $TargetOut = if ($ResolvedTarget) { $ResolvedTarget } else { $CurrentFeature }
+
     $output = [ordered]@{
         project          = $ProjectName
         repo_root        = $RepoRoot
@@ -434,7 +411,9 @@ if ($Json) {
             path   = $ConstitutionPath
         }
         feature_count    = $Features.Count
-        target_feature   = $ResolvedTarget
+        current_feature  = $CurrentFeature
+        feature_source   = $FeatureSource
+        target_feature   = $TargetOut
         features         = $featuresInfo
     }
 
@@ -446,10 +425,12 @@ if ($Json) {
     Write-Output "Project: $ProjectName"
     Write-Output "Root: $RepoRoot"
     Write-Output "Specs: $SpecsDir"
-    Write-Output "Cache: $CacheFile"
+    Write-Output "Status File: $CacheFile"
     Write-Output "Git: $HasGit"
     Write-Output "Branch: $CurrentBranch"
     Write-Output "Feature Branch: $IsFeatureBranch"
+    Write-Output "Current Feature: $(if ($CurrentFeature) { $CurrentFeature } else { '(none)' })"
+    Write-Output "Feature Source: $(if ($FeatureSource) { $FeatureSource } else { '(none)' })"
     Write-Output "Constitution: $ConstitutionExists ($ConstitutionPath)"
     Write-Output ""
 
@@ -469,7 +450,6 @@ if ($Json) {
             Write-Output "  Name: $($d.name)"
             Write-Output "  Path: $($d.path)"
             Write-Output "  Current: $($d.is_current)"
-            Write-Output "  From cache: $($d.from_cache)"
             Write-Output "  Artifacts:"
             Write-Output "    spec.md: $($d.has_spec)"
             Write-Output "    plan.md: $($d.has_plan)"

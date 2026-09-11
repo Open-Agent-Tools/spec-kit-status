@@ -10,15 +10,17 @@ A [Spec Kit](https://github.com/github/spec-kit) extension that adds the `/speck
 - **Checklist tracking** — progress on any quality checklists
 - **Next action** — recommends the exact command to run next
 - **JSON output** — machine-readable format for tooling integration
-- Cross-platform: Bash (macOS/Linux) and PowerShell (Windows)
+- Cross-platform: Bash, PowerShell, and Python runtimes, matching the variant your project was initialized with
 
 ## Installation
 
-directly from GitHub:
+Install directly from a GitHub release:
 
 ```bash
-specify extension add --from https://github.com/Open-Agent-Tools/spec-kit-status/archive/refs/tags/v1.3.4.zip EXTENSION
+specify extension add status-report --from https://github.com/Open-Agent-Tools/spec-kit-status/archive/refs/tags/v1.4.0.zip
 ```
+
+The extension id comes first; `--from` points at the release archive.
 
 ## Usage
 
@@ -81,9 +83,9 @@ Next: /speckit.implement
 
 ## Requirements
 
-- Spec Kit `>=0.1.0`
-- Bash (macOS/Linux) or PowerShell (Windows)
-- Git (optional — used for branch detection)
+- Spec Kit `>=1.0.0`
+- Bash, PowerShell, or Python 3 — Spec Kit picks the variant your project uses
+- Git (optional — used to resolve the current feature when `.specify/feature.json` is absent)
 
 ## License
 

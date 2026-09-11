@@ -19,6 +19,13 @@
 
 set -e
 
+# The status symbols below are multi-byte UTF-8. Character-based length (${#var})
+# only agrees with what a reader sees under a UTF-8 locale, so default LC_CTYPE
+# when the environment has not already pinned one.
+if [ -z "${LC_ALL:-}" ] && [ -z "${LC_CTYPE:-}" ]; then
+    export LC_CTYPE="${LANG:-en_US.UTF-8}"
+fi
+
 # Parse command line arguments
 JSON_MODE=false
 TARGET_FEATURE=""
@@ -139,6 +146,41 @@ json_escape() {
     printf '%s' "$str" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g' | tr -d '\n\r'
 }
 
+# Safely read .specify/feature.json's "feature_directory" value.
+# Mirrors spec-kit's own parser order (jq -> python3 -> grep/sed) from
+# scripts/bash/common.sh. Always returns 0 so a parse failure cannot abort set -e.
+read_feature_json() {
+    local fj="$1/.specify/feature.json"
+    [ -f "$fj" ] || { printf '%s' ''; return 0; }
+
+    local fd=''
+    if command -v jq >/dev/null 2>&1; then
+        fd=$(jq -r '.feature_directory // empty' "$fj" 2>/dev/null) || fd=''
+    fi
+    if [ -z "$fd" ] && command -v python3 >/dev/null 2>&1; then
+        fd=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('feature_directory') or '')" "$fj" 2>/dev/null) || fd=''
+    fi
+    if [ -z "$fd" ]; then
+        fd=$( { grep -E '"feature_directory"[[:space:]]*:' "$fj" 2>/dev/null || true; } \
+            | head -n 1 \
+            | sed -E 's/^[^:]*:[[:space:]]*"([^"]*)".*$/\1/' )
+    fi
+    printf '%s' "$fd"
+}
+
+# Left-pad a table cell to a visible width.
+# printf's %-Ns counts bytes, so a cell holding a 3-byte symbol like the check
+# mark comes out two columns short and the markdown table stops lining up.
+pad_cell() {
+    local text="$1" width="$2" len
+    len=${#text}
+    printf '%s' "$text"
+    while [ "$len" -lt "$width" ]; do
+        printf ' '
+        len=$((len + 1))
+    done
+}
+
 # Function to count tasks in a tasks.md file
 # Returns: "total completed"
 count_tasks() {
@@ -196,16 +238,18 @@ CONSTITUTION_EXISTS=$(check_exists "$CONSTITUTION_PATH")
 # Get project name
 PROJECT_NAME=$(get_project_name "$REPO_ROOT")
 
-# Check if on feature branch (matches NNN-* pattern)
+# Check if on a feature branch. Spec-kit numbers features with three digits or
+# more, and --timestamp features are prefixed YYYYMMDD-HHMMSS.
 IS_FEATURE_BRANCH=false
-if echo "$CURRENT_BRANCH" | grep -qE '^[0-9]{3}-'; then
+if echo "$CURRENT_BRANCH" | grep -qE '^[0-9]{3}[0-9]*-'; then
     IS_FEATURE_BRANCH=true
 fi
 
-# Collect all features
+# Collect all features. The glob must admit sequential prefixes of three digits
+# or more (001-, 1000-) as well as timestamp prefixes (20260910-123456-).
 FEATURES=()
 if [ -d "$SPECS_DIR" ]; then
-    for dir in "$SPECS_DIR"/[0-9][0-9][0-9]-*; do
+    for dir in "$SPECS_DIR"/[0-9][0-9][0-9]*-*; do
         if [ -d "$dir" ]; then
             FEATURES+=("$(basename "$dir")")
         fi
@@ -215,6 +259,57 @@ fi
 # Sort features by number
 if [ ${#FEATURES[@]} -gt 0 ]; then
     IFS=$'\n' FEATURES=($(sort <<<"${FEATURES[*]}")); unset IFS
+fi
+
+# ── Resolve the current feature ───────────────────────────────────────────────
+# Spec-kit 1.0.x no longer treats the git branch as authoritative. Mirror the
+# precedence in its own common.sh: SPECIFY_FEATURE_DIRECTORY, then
+# .specify/feature.json, then SPECIFY_FEATURE, then the branch as a legacy
+# fallback.
+
+CURRENT_FEATURE=""
+FEATURE_SOURCE=""
+if [ -n "${SPECIFY_FEATURE_DIRECTORY:-}" ]; then
+    CURRENT_FEATURE="$(basename "${SPECIFY_FEATURE_DIRECTORY%/}")"
+    FEATURE_SOURCE="env"
+else
+    FEATURE_JSON_DIR="$(read_feature_json "$REPO_ROOT")"
+    if [ -n "$FEATURE_JSON_DIR" ]; then
+        CURRENT_FEATURE="$(basename "${FEATURE_JSON_DIR%/}")"
+        FEATURE_SOURCE="feature.json"
+    elif [ -n "${SPECIFY_FEATURE:-}" ]; then
+        CURRENT_FEATURE="$SPECIFY_FEATURE"
+        FEATURE_SOURCE="env"
+    elif [ -n "$CURRENT_BRANCH" ]; then
+        CURRENT_FEATURE="$CURRENT_BRANCH"
+        FEATURE_SOURCE="branch"
+    fi
+fi
+
+# Match the resolved identifier against a real feature directory: exact name
+# first, then leading number prefix, since a branch name may abbreviate the
+# directory name.
+match_feature() {
+    local id="$1" f prefix
+    [ -n "$id" ] || return 0
+    for f in "${FEATURES[@]}"; do
+        if [ "$f" = "$id" ]; then
+            printf '%s' "$f"
+            return 0
+        fi
+    done
+    prefix=$(printf '%s' "$id" | sed -n 's/^\([0-9][0-9][0-9][0-9]*\)-.*/\1/p')
+    [ -n "$prefix" ] || return 0
+    for f in "${FEATURES[@]}"; do
+        case "$f" in
+            "$prefix"-*) printf '%s' "$f"; return 0 ;;
+        esac
+    done
+}
+
+CURRENT_FEATURE="$(match_feature "$CURRENT_FEATURE")"
+if [ -z "$CURRENT_FEATURE" ]; then
+    FEATURE_SOURCE=""
 fi
 
 CACHE_FILE="$SPECS_DIR/spec-status.md"
@@ -240,12 +335,8 @@ for i in "${!FEATURES[@]}"; do
 
     # Determine if this is the current feature
     is_current=false
-    if [ "$IS_FEATURE_BRANCH" = "true" ]; then
-        current_prefix=$(echo "$CURRENT_BRANCH" | grep -o '^[0-9]\{3\}')
-        feature_prefix=$(echo "$feature" | grep -o '^[0-9]\{3\}')
-        if [ "$current_prefix" = "$feature_prefix" ]; then
-            is_current=true
-        fi
+    if [ -n "$CURRENT_FEATURE" ] && [ "$feature" = "$CURRENT_FEATURE" ]; then
+        is_current=true
     fi
     FEAT_IS_CURRENT[$i]="$is_current"
 
@@ -297,9 +388,7 @@ write_status_file() {
             if [ "$len" -gt "$col_widths" ]; then col_widths=$len; fi
         done
 
-        local header_feat
-        printf -v header_feat "%-${col_widths}s" "Feature"
-        echo "| $header_feat | Specify | Plan | Tasks | Implement |"
+        echo "| $(pad_cell "Feature" "$col_widths") | Specify | Plan | Tasks | Implement |"
         echo "|$(printf '%0.s-' $(seq 1 $((col_widths + 2))))|---------|------|-------|-----------|"
 
         for i in "${!FEATURES[@]}"; do
@@ -322,16 +411,16 @@ write_status_file() {
                 implement_str="● $completed/$total ($pct%)"
             fi
 
-            local feat_col
-            printf -v feat_col "%-${col_widths}s" "$feature"
-            printf "| %s | %-7s | %-4s | %-5s | %-9s |\n" \
-                "$feat_col" "$specify_sym" "$plan_sym" "$tasks_sym" "$implement_str"
+            printf "| %s | %s | %s | %s | %s |\n" \
+                "$(pad_cell "$feature" "$col_widths")" \
+                "$(pad_cell "$specify_sym" 7)" \
+                "$(pad_cell "$plan_sym" 4)" \
+                "$(pad_cell "$tasks_sym" 5)" \
+                "$(pad_cell "$implement_str" 9)"
         done
 
         if [ "${#FEATURES[@]}" -eq 0 ]; then
-            local feat_col
-            printf -v feat_col "%-${col_widths}s" "(none)"
-            echo "| $feat_col |         |      |       |           |"
+            echo "| $(pad_cell "(none)" "$col_widths") |         |      |       |           |"
         fi
 
         echo ""
@@ -451,8 +540,20 @@ if $JSON_MODE; then
     printf '"constitution":{"exists":%s,"path":"%s"},' "$CONSTITUTION_EXISTS" "$(json_escape "$CONSTITUTION_PATH")"
     printf '"feature_count":%d,' "${#FEATURES[@]}"
 
-    if [ -n "$RESOLVED_TARGET" ]; then
-        printf '"target_feature":"%s",' "$(json_escape "$RESOLVED_TARGET")"
+    if [ -n "$CURRENT_FEATURE" ]; then
+        printf '"current_feature":"%s",' "$(json_escape "$CURRENT_FEATURE")"
+        printf '"feature_source":"%s",' "$(json_escape "$FEATURE_SOURCE")"
+    else
+        printf '"current_feature":null,'
+        printf '"feature_source":null,'
+    fi
+
+    # target_feature is what the caller asked for, falling back to whatever
+    # feature the project is currently on.
+    TARGET_OUT="$RESOLVED_TARGET"
+    [ -n "$TARGET_OUT" ] || TARGET_OUT="$CURRENT_FEATURE"
+    if [ -n "$TARGET_OUT" ]; then
+        printf '"target_feature":"%s",' "$(json_escape "$TARGET_OUT")"
     else
         printf '"target_feature":null,'
     fi
@@ -470,6 +571,8 @@ else
     echo "Git: $HAS_GIT"
     echo "Branch: $CURRENT_BRANCH"
     echo "Feature Branch: $IS_FEATURE_BRANCH"
+    echo "Current Feature: ${CURRENT_FEATURE:-(none)}"
+    echo "Feature Source: ${FEATURE_SOURCE:-(none)}"
     echo "Constitution: $CONSTITUTION_EXISTS ($CONSTITUTION_PATH)"
     echo ""
 
