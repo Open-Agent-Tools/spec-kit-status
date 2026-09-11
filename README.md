@@ -22,6 +22,16 @@ specify extension add status-report --from https://github.com/Open-Agent-Tools/s
 
 The extension id comes first; `--from` points at the release archive.
 
+Spec Kit treats any `--from` URL as an untrusted source and asks `Continue with installation?
+[y/N]` before downloading. Answer `y`. In a script or CI job there is no one to answer and the
+install will wait indefinitely, so pipe the confirmation in:
+
+```bash
+printf 'y\n' | specify extension add status-report --from https://github.com/Open-Agent-Tools/spec-kit-status/archive/refs/tags/v1.4.2.zip
+```
+
+Add `--force` to reinstall over an existing copy when upgrading.
+
 ## Usage
 
 ```
