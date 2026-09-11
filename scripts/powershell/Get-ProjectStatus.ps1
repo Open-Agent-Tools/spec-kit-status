@@ -16,8 +16,16 @@
 param(
     [switch]$Json,
     [string]$Feature,
-    [switch]$Help
+    [switch]$Help,
+    # Absorb unrecognized arguments. The command exposes --all and --verbose to
+    # users, but those are the agent's to interpret, not this script's;
+    # forwarding them must not turn a status query into an error.
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$Rest
 )
+
+# A flag that bound positionally is not a feature name.
+if ($Feature -and $Feature.StartsWith('-')) { $Feature = "" }
 
 $ErrorActionPreference = 'Stop'
 
@@ -363,12 +371,13 @@ if ((Test-Path $SpecsDir -PathType Container) -or $Features.Count -gt 0) {
 
 $ResolvedTarget = $null
 if ($Feature) {
-    # Try exact match first
-    if (Test-Path (Join-Path $SpecsDir $Feature) -PathType Container) {
+    # Try exact match first. -LiteralPath because Test-Path otherwise treats
+    # *, ? and [ ] in the argument as wildcards and reports a pattern as a hit.
+    if (Test-Path -LiteralPath (Join-Path $SpecsDir $Feature) -PathType Container) {
         $ResolvedTarget = $Feature
     }
     # Try as path
-    elseif (Test-Path $Feature -PathType Container) {
+    elseif (Test-Path -LiteralPath $Feature -PathType Container) {
         $ResolvedTarget = Split-Path $Feature -Leaf
     }
     # Try as number prefix
@@ -377,9 +386,10 @@ if ($Feature) {
         $match = $Features | Where-Object { $_ -match "^$prefix-" } | Select-Object -First 1
         if ($match) { $ResolvedTarget = $match }
     }
-    # Try partial match
+    # Try partial match. Contains() rather than -like, which would read *, ?
+    # and [ ] in the argument as wildcards and match an unrelated feature.
     else {
-        $match = $Features | Where-Object { $_ -like "*$Feature*" } | Select-Object -First 1
+        $match = $Features | Where-Object { $_.Contains($Feature) } | Select-Object -First 1
         if ($match) { $ResolvedTarget = $match }
     }
 

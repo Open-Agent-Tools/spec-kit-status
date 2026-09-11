@@ -271,8 +271,14 @@ def main() -> int:
     parser.add_argument("--json", action="store_true", help="Output in JSON format")
     parser.add_argument("--feature", help="Focus on specific feature")
     parser.add_argument("positional", nargs="?", help=argparse.SUPPRESS)
-    args = parser.parse_args()
-    target_feature = args.feature or args.positional or ""
+    # Unrecognized flags are ignored rather than fatal. The command exposes
+    # --all and --verbose to users, but those are the agent's to interpret, not
+    # this script's; forwarding them must not turn a status query into an error.
+    args, _ignored = parser.parse_known_args()
+    positional = args.positional or ""
+    if positional.startswith("-"):
+        positional = ""
+    target_feature = args.feature or positional
 
     # ── Resolve repository root ───────────────────────────────────────────────
     script_dir = Path(__file__).resolve().parent

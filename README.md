@@ -17,7 +17,7 @@ A [Spec Kit](https://github.com/github/spec-kit) extension that adds the `/speck
 Install directly from a GitHub release:
 
 ```bash
-specify extension add status-report --from https://github.com/Open-Agent-Tools/spec-kit-status/archive/refs/tags/v1.4.1.zip
+specify extension add status-report --from https://github.com/Open-Agent-Tools/spec-kit-status/archive/refs/tags/v1.4.2.zip
 ```
 
 The extension id comes first; `--from` points at the release archive.

@@ -22,9 +22,8 @@ Provide a clear, at-a-glance view of project status and workflow progress — an
 {SCRIPT}
 ```
 
-If that placeholder was not substituted, run the script for your platform directly:
-`sh .specify/extensions/status-report/scripts/bash/get-project-status.sh --json` on macOS/Linux,
-`pwsh .specify/extensions/status-report/scripts/powershell/Get-ProjectStatus.ps1 -Json` on Windows.
+Run it exactly as written, adding only `--feature <name>` when the user named a feature. `--all`
+and `--verbose` are yours to interpret and shape the output with — do not pass them through.
 
 The script discovers the repo layout, resolves the current feature, computes task counts, and writes the status file.
 

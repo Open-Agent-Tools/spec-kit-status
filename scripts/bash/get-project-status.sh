@@ -68,6 +68,13 @@ EXAMPLES:
 EOF
             exit 0
             ;;
+        -*)
+            # Ignore unrecognized flags. The command exposes --all and --verbose
+            # to users, but those are the agent's to interpret, not this
+            # script's; forwarding them must not turn a status query into an
+            # error.
+            shift
+            ;;
         *)
             # Treat positional arg as feature identifier
             if [ -z "$TARGET_FEATURE" ]; then

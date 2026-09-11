@@ -120,6 +120,25 @@ check_runtime() {
     assert_json "explicit feature wins for target" "d['target_feature']" "001-onboarding" "$json"
     assert_json "current_feature still reflects the project" "d['current_feature']" "1000-scale" "$json"
 
+    # The command exposes --all and --verbose to users. They are the agent's to
+    # interpret, and forwarding them must not turn a status query into an error.
+    for stray in --all --verbose; do
+        if json=$(run_status --json "$stray" 2>/dev/null); then
+            assert_json "ignores a forwarded $stray" "d['feature_count']" "3" "$json"
+        else
+            echo "  FAIL [$RUNTIME] ignores a forwarded $stray — script exited non-zero"
+            FAILURES=$((FAILURES + 1))
+        fi
+    done
+
+    # Test-Path and glob matching must not accept a wildcard as a feature name.
+    if run_status --json --feature '*' >/dev/null 2>&1; then
+        echo "  FAIL [$RUNTIME] accepted '*' as a feature name"
+        FAILURES=$((FAILURES + 1))
+    else
+        echo "  ok   rejects a wildcard feature name"
+    fi
+
     rm -f .specify/feature.json
     git checkout -q 001-onboarding 2>/dev/null || git checkout -qb 001-onboarding
     json=$(run_status --json)

@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2026-09-10
+
+### Fixed
+
+- **Forwarding `--all` or `--verbose` to the script broke the command.** Both are documented
+  user-facing flags that the agent is meant to interpret itself, but nothing said so and each
+  runtime failed differently: bash read them as a feature name and reported "Feature not found",
+  python exited 2 on an unrecognized argument, and PowerShell accepted `-Verbose` while
+  rejecting `--all`. Since the command spec tells the agent to stop and report when the script
+  fails, a forwarded flag turned a status query into an error. All three now ignore
+  unrecognized flags, and the command spec says explicitly not to pass them through.
+- **PowerShell read a wildcard as a valid feature name.** `Test-Path` and `-like` treat `*`, `?`
+  and `[ ]` as patterns, so `-Feature '*'` resolved to an arbitrary feature instead of being
+  rejected. Now uses `-LiteralPath` and `Contains()`. Bash and Python were already literal.
+
+### Changed
+
+- Command body no longer carries the stale "if that placeholder was not substituted" fallback.
+  `{SCRIPT}` substitution is verified working against Spec Kit 1.0.5, and the leftover sentence
+  described a placeholder that is not there by the time an agent reads it.
+
 ## [1.4.1] - 2026-09-10
 
 ### Fixed
@@ -220,6 +241,7 @@ Compatibility pass against Spec Kit 1.0.5.
 - Next action recommendations based on current state
 - JSON output format for machine-readable integration
 
+[1.4.2]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.4.2
 [1.4.1]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.4.1
 [1.4.0]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.4.0
 [1.3.4]: https://github.com/Open-Agent-Tools/spec-kit-status/releases/tag/v1.3.4
