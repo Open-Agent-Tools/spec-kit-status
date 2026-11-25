@@ -1,41 +1,23 @@
 #!/usr/bin/env pwsh
 
-# Project status discovery script for /speckit.status.report command
-#
-# This script discovers project structure and artifact existence.
-# It counts task completion and writes a fresh specs/spec-status.md on every run.
-#
-# Usage: ./Get-ProjectStatus.ps1 [OPTIONS]
-#
-# OPTIONS:
-#   -Json               Output in JSON format (default: text)
-#   -Feature <name>     Focus on specific feature (name, number, or path)
-#   -Help               Show help message
 
 [CmdletBinding()]
 param(
     [switch]$Json,
     [string]$Feature,
     [switch]$Help,
-    # Absorb unrecognized arguments. The command exposes --all and --verbose to
-    # users, but those are the agent's to interpret, not this script's;
-    # forwarding them must not turn a status query into an error.
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Rest
 )
 
-# A flag that bound positionally is not a feature name.
 if ($Feature -and $Feature.StartsWith('-')) { $Feature = "" }
 
 $ErrorActionPreference = 'Stop'
 
-# Define Unicode symbols as escape sequences so the script works
-# regardless of file encoding (BOM or no BOM on Windows).
-$SYM_CHECK  = [string][char]0x2713  # ✓
-$SYM_CIRCLE = [string][char]0x25CB  # ○
-$SYM_BULLET = [string][char]0x25CF  # ●
+$SYM_CHECK  = [string][char]0x2713
+$SYM_CIRCLE = [string][char]0x25CB
+$SYM_BULLET = [string][char]0x25CF
 
-# Show help if requested
 if ($Help) {
     Write-Output @"
 Usage: Get-ProjectStatus.ps1 [OPTIONS]
@@ -61,7 +43,6 @@ EXAMPLES:
     exit 0
 }
 
-# Function to find repository root
 function Find-RepoRoot {
     param([string]$StartPath)
 
@@ -75,11 +56,9 @@ function Find-RepoRoot {
     return $null
 }
 
-# Function to get project name
 function Get-ProjectName {
     param([string]$RepoRoot)
 
-    # Try package.json first
     $packageJson = Join-Path $RepoRoot "package.json"
     if (Test-Path $packageJson) {
         try {
@@ -88,11 +67,9 @@ function Get-ProjectName {
                 return $pkg.name
             }
         } catch {
-            # Ignore parse errors
         }
     }
 
-    # Try pyproject.toml
     $pyproject = Join-Path $RepoRoot "pyproject.toml"
     if (Test-Path $pyproject) {
         $content = Get-Content $pyproject -Raw
@@ -101,11 +78,9 @@ function Get-ProjectName {
         }
     }
 
-    # Fall back to directory name
     return Split-Path $RepoRoot -Leaf
 }
 
-# Function to check if path exists (file or non-empty directory)
 function Test-Exists {
     param([string]$Path)
 
@@ -118,8 +93,6 @@ function Test-Exists {
     return $false
 }
 
-# Function to count tasks in a tasks.md file
-# Returns hashtable with Total and Completed
 function Count-Tasks {
     param([string]$TasksFile)
 
@@ -134,8 +107,6 @@ function Count-Tasks {
     return $result
 }
 
-# Safely read .specify/feature.json's "feature_directory" value.
-# Returns an empty string when the file is missing or unparseable.
 function Read-FeatureJson {
     param([string]$RepoRoot)
 
@@ -145,13 +116,10 @@ function Read-FeatureJson {
         $data = Get-Content $fj -Raw | ConvertFrom-Json
         if ($data.feature_directory) { return $data.feature_directory }
     } catch {
-        # Ignore parse errors — treat as no feature context
     }
     return ""
 }
 
-# Match a feature identifier against a real feature directory: exact name first,
-# then leading number prefix, since a branch name may abbreviate the directory.
 function Resolve-FeatureName {
     param([string]$Id, [string[]]$Candidates)
 
@@ -168,7 +136,6 @@ function Resolve-FeatureName {
     return $null
 }
 
-# Resolve repository root
 $ScriptDir = $PSScriptRoot
 
 try {
@@ -176,8 +143,6 @@ try {
     if ($LASTEXITCODE -eq 0) {
         $RepoRoot = $gitRoot
         $HasGit = $true
-        # symbolic-ref works in a repo with no commits, where rev-parse prints
-        # "HEAD" and exits non-zero. Keep rev-parse for detached HEAD.
         $CurrentBranch = git symbolic-ref --short HEAD 2>$null
         if ($LASTEXITCODE -ne 0) { $CurrentBranch = git rev-parse --abbrev-ref HEAD 2>$null }
         if ($LASTEXITCODE -ne 0 -or -not $CurrentBranch) { $CurrentBranch = "unknown" }
@@ -194,37 +159,29 @@ try {
     $CurrentBranch = ""
 }
 
-# Determine specs directory
 $SpecsDir = if (Test-Path (Join-Path $RepoRoot "specs")) {
     Join-Path $RepoRoot "specs"
 } elseif (Test-Path (Join-Path $RepoRoot ".specify/specs")) {
     Join-Path $RepoRoot ".specify/specs"
 } else {
-    Join-Path $RepoRoot "specs"  # Default
+    Join-Path $RepoRoot "specs"
 }
 
-# Determine memory directory
 $MemoryDir = if (Test-Path (Join-Path $RepoRoot ".specify/memory")) {
     Join-Path $RepoRoot ".specify/memory"
 } elseif (Test-Path (Join-Path $RepoRoot "memory")) {
     Join-Path $RepoRoot "memory"
 } else {
-    Join-Path $RepoRoot ".specify/memory"  # Default
+    Join-Path $RepoRoot ".specify/memory"
 }
 
-# Check constitution
 $ConstitutionPath = Join-Path $MemoryDir "constitution.md"
 $ConstitutionExists = Test-Path $ConstitutionPath -PathType Leaf
 
-# Get project name
 $ProjectName = Get-ProjectName $RepoRoot
 
-# Check if on a feature branch. Spec-kit numbers features with three digits or
-# more, and --timestamp features are prefixed YYYYMMDD-HHMMSS.
 $IsFeatureBranch = $CurrentBranch -match '^\d{3}\d*-'
 
-# Collect all features. The pattern must admit sequential prefixes of three
-# digits or more (001-, 1000-) as well as timestamp prefixes (20260910-123456-).
 $Features = @()
 if (Test-Path $SpecsDir -PathType Container) {
     $Features = @(Get-ChildItem $SpecsDir -Directory | Where-Object { $_.Name -match '^\d{3}\d*-' } | Sort-Object Name | Select-Object -ExpandProperty Name)
@@ -232,11 +189,6 @@ if (Test-Path $SpecsDir -PathType Container) {
 
 $CacheFile = Join-Path $SpecsDir "spec-status.md"
 
-# ── Resolve the current feature ───────────────────────────────────────────────
-# Spec-kit 1.0.x no longer treats the git branch as authoritative. Mirror the
-# precedence in its own common.ps1: SPECIFY_FEATURE_DIRECTORY, then
-# .specify/feature.json, then SPECIFY_FEATURE, then the branch as a legacy
-# fallback.
 
 $CurrentFeature = $null
 $FeatureSource = $null
@@ -260,7 +212,6 @@ if ($env:SPECIFY_FEATURE_DIRECTORY) {
 $CurrentFeature = Resolve-FeatureName $CurrentFeature $Features
 if (-not $CurrentFeature) { $FeatureSource = $null }
 
-# ── Per-feature data collection ───────────────────────────────────────────────
 
 $FeatureData = @{}
 
@@ -296,7 +247,6 @@ foreach ($f in $Features) {
     }
 }
 
-# ── Write status file ─────────────────────────────────────────────────────────
 
 function Write-StatusFile {
     param([string]$CachePath)
@@ -315,8 +265,7 @@ function Write-StatusFile {
     $lines.Add("<!-- spec-status: project=$ProjectName commit=$currentCommit updated=$timestamp -->")
     $lines.Add("")
 
-    # Determine column width for feature names
-    $colWidth = 7  # "Feature"
+    $colWidth = 7
     foreach ($f in $Features) { if ($f.Length -gt $colWidth) { $colWidth = $f.Length } }
 
     $headerFeat = "Feature".PadRight($colWidth)
@@ -351,7 +300,6 @@ function Write-StatusFile {
 
     $lines.Add("")
 
-    # Machine-readable per-feature metadata as HTML comments
     foreach ($f in $Features) {
         $d = $FeatureData[$f]
         $clFiles = if ($d.checklist_files.Count -gt 0) { $d.checklist_files -join ',' } else { "" }
@@ -367,27 +315,20 @@ if ((Test-Path $SpecsDir -PathType Container) -or $Features.Count -gt 0) {
     Write-StatusFile $CacheFile
 }
 
-# ── Resolve target feature ────────────────────────────────────────────────────
 
 $ResolvedTarget = $null
 if ($Feature) {
-    # Try exact match first. -LiteralPath because Test-Path otherwise treats
-    # *, ? and [ ] in the argument as wildcards and reports a pattern as a hit.
     if (Test-Path -LiteralPath (Join-Path $SpecsDir $Feature) -PathType Container) {
         $ResolvedTarget = $Feature
     }
-    # Try as path
     elseif (Test-Path -LiteralPath $Feature -PathType Container) {
         $ResolvedTarget = Split-Path $Feature -Leaf
     }
-    # Try as number prefix
     elseif ($Feature -match '^\d+$') {
         $prefix = "{0:D3}" -f [int]$Feature
         $match = $Features | Where-Object { $_ -match "^$prefix-" } | Select-Object -First 1
         if ($match) { $ResolvedTarget = $match }
     }
-    # Try partial match. Contains() rather than -like, which would read *, ?
-    # and [ ] in the argument as wildcards and match an unrelated feature.
     else {
         $match = $Features | Where-Object { $_.Contains($Feature) } | Select-Object -First 1
         if ($match) { $ResolvedTarget = $match }
@@ -399,7 +340,6 @@ if ($Feature) {
     }
 }
 
-# ── Output results ────────────────────────────────────────────────────────────
 
 if ($Json) {
     $featuresInfo = @()
@@ -407,8 +347,6 @@ if ($Json) {
         $featuresInfo += $FeatureData[$f]
     }
 
-    # target_feature is what the caller asked for, falling back to whatever
-    # feature the project is currently on.
     $TargetOut = if ($ResolvedTarget) { $ResolvedTarget } else { $CurrentFeature }
 
     $output = [ordered]@{

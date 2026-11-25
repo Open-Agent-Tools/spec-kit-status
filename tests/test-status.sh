@@ -1,13 +1,4 @@
 #!/usr/bin/env bash
-#
-# Self-check for the status discovery scripts. Builds a throwaway spec-kit-shaped
-# project and asserts the JSON output of every runtime that is installed, then
-# checks the runtimes agree with each other. Run it directly:
-#
-#   ./tests/test-status.sh
-#
-# No framework, no fixtures — it exits non-zero on the first failure.
-# PowerShell is skipped when pwsh is absent; bash and python are required.
 
 set -e
 
@@ -18,13 +9,11 @@ trap 'rm -rf "$WORK"' EXIT
 FAILURES=0
 RUNTIME=""
 
-# Invoke the current runtime with the given arguments.
 run_status() {
     case "$RUNTIME" in
         bash) sh "$ROOT/scripts/bash/get-project-status.sh" "$@" ;;
         python) python3 "$ROOT/scripts/python/get_project_status.py" "$@" ;;
         powershell)
-            # The PowerShell script takes -Json / -Feature rather than --json / --feature.
             local ps_args=()
             while [ $# -gt 0 ]; do
                 case "$1" in
@@ -50,7 +39,6 @@ assert_json() {
     fi
 }
 
-# ── Build a fixture project ───────────────────────────────────────────────────
 
 cd "$WORK"
 git init -q .
@@ -59,8 +47,6 @@ git config user.name test
 mkdir -p .specify/memory
 echo "# Constitution" > .specify/memory/constitution.md
 
-# Three feature directories covering every prefix shape spec-kit emits:
-# sequential three-digit, sequential four-digit, and --timestamp.
 for f in 001-onboarding 1000-scale 20260910-123456-legacy; do
     mkdir -p "specs/$f"
     echo "# Spec" > "specs/$f/spec.md"
@@ -78,7 +64,6 @@ git add -A
 git commit -qm init
 git checkout -qb main 2>/dev/null || true
 
-# ── Assertion suite, run once per available runtime ───────────────────────────
 
 check_runtime() {
     RUNTIME="$1"
@@ -120,8 +105,6 @@ check_runtime() {
     assert_json "explicit feature wins for target" "d['target_feature']" "001-onboarding" "$json"
     assert_json "current_feature still reflects the project" "d['current_feature']" "1000-scale" "$json"
 
-    # The command exposes --all and --verbose to users. They are the agent's to
-    # interpret, and forwarding them must not turn a status query into an error.
     for stray in --all --verbose; do
         if json=$(run_status --json "$stray" 2>/dev/null); then
             assert_json "ignores a forwarded $stray" "d['feature_count']" "3" "$json"
@@ -131,7 +114,6 @@ check_runtime() {
         fi
     done
 
-    # Test-Path and glob matching must not accept a wildcard as a feature name.
     if run_status --json --feature '*' >/dev/null 2>&1; then
         echo "  FAIL [$RUNTIME] accepted '*' as a feature name"
         FAILURES=$((FAILURES + 1))
@@ -147,13 +129,9 @@ check_runtime() {
 
     run_status --json > "$WORK/out-$RUNTIME.json"
 
-    # The written status file is a committable artifact, so its rendering has to
-    # match across runtimes too. Drop the line carrying the commit and timestamp.
     grep -v "spec-status:" specs/spec-status.md > "$WORK/statusfile-$RUNTIME.txt"
 }
 
-# A repo with no commits: rev-parse prints "HEAD" to stdout and exits non-zero,
-# which a naive fallback concatenates into "HEADunknown".
 check_empty_repo() {
     RUNTIME="$1"
     local empty="$WORK/empty-$RUNTIME" json
@@ -165,7 +143,6 @@ check_empty_repo() {
     assert_json "branch is sane with no commits" \
         "d['branch'] in ('main','master')" "True" "$json"
     assert_json "discovery works with no commits" "d['feature_count']" "1" "$json"
-    # feature.json is the only context here; the branch is main, not a feature.
     echo '{"feature_directory":"specs/001-fresh"}' > "$empty/.specify/feature.json"
     json=$(cd "$empty" && run_status --json)
     assert_json "feature resolves with no commits" "d['current_feature']" "001-fresh" "$json"
@@ -184,7 +161,6 @@ for rt in $RUNTIMES; do
     cd "$WORK"
 done
 
-# ── Cross-runtime parity ──────────────────────────────────────────────────────
 
 echo "── parity ──"
 RUNTIME="parity"
@@ -196,8 +172,6 @@ loaded = {rt: json.loads((work / f"out-{rt}.json").read_text()) for rt in runtim
 base_name, base = runtimes[0], loaded[runtimes[0]]
 failures = 0
 
-# repo_root/specs_dir/cache_file are absolute paths that can differ by symlink
-# resolution (/var vs /private/var on macOS), so compare them by basename.
 scalar = ["project", "has_git", "branch", "is_feature_branch", "feature_count",
           "current_feature", "feature_source", "target_feature"]
 

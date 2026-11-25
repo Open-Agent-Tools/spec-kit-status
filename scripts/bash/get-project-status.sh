@@ -1,32 +1,12 @@
 #!/usr/bin/env bash
 
-# Project status discovery script for /speckit.status.report command
-#
-# This script discovers project structure and artifact existence.
-# It counts task completion and writes a fresh specs/spec-status.md on every run.
-#
-# Usage: ./get-project-status.sh [OPTIONS]
-#
-# OPTIONS:
-#   --json              Output in JSON format (default: text)
-#   --feature <name>    Focus on specific feature (name, number, or path)
-#   --help, -h          Show help message
-#
-# OUTPUTS:
-#   JSON mode: Full project status object (includes tasks_total, tasks_completed per feature)
-#   Text mode: Human-readable status lines
-#   Side effect: Writes/updates {SPECS_DIR}/spec-status.md
 
 set -e
 
-# The status symbols below are multi-byte UTF-8. Character-based length (${#var})
-# only agrees with what a reader sees under a UTF-8 locale, so default LC_CTYPE
-# when the environment has not already pinned one.
 if [ -z "${LC_ALL:-}" ] && [ -z "${LC_CTYPE:-}" ]; then
     export LC_CTYPE="${LANG:-en_US.UTF-8}"
 fi
 
-# Parse command line arguments
 JSON_MODE=false
 TARGET_FEATURE=""
 
@@ -69,14 +49,9 @@ EOF
             exit 0
             ;;
         -*)
-            # Ignore unrecognized flags. The command exposes --all and --verbose
-            # to users, but those are the agent's to interpret, not this
-            # script's; forwarding them must not turn a status query into an
-            # error.
             shift
             ;;
         *)
-            # Treat positional arg as feature identifier
             if [ -z "$TARGET_FEATURE" ]; then
                 TARGET_FEATURE="$1"
             fi
@@ -85,7 +60,6 @@ EOF
     esac
 done
 
-# Function to find repository root
 find_repo_root() {
     local dir="$1"
     while [ "$dir" != "/" ]; do
@@ -98,11 +72,9 @@ find_repo_root() {
     return 1
 }
 
-# Function to get project name from directory or package.json
 get_project_name() {
     local repo_root="$1"
 
-    # Try package.json first
     if [ -f "$repo_root/package.json" ]; then
         local name=$(grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' "$repo_root/package.json" 2>/dev/null | head -1 | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
         if [ -n "$name" ]; then
@@ -111,7 +83,6 @@ get_project_name() {
         fi
     fi
 
-    # Try pyproject.toml
     if [ -f "$repo_root/pyproject.toml" ]; then
         local name=$(grep -E '^name[[:space:]]*=' "$repo_root/pyproject.toml" 2>/dev/null | head -1 | sed 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/')
         if [ -n "$name" ] && [ "$name" != "$(grep -E '^name[[:space:]]*=' "$repo_root/pyproject.toml" 2>/dev/null | head -1)" ]; then
@@ -120,11 +91,9 @@ get_project_name() {
         fi
     fi
 
-    # Fall back to directory name
     basename "$repo_root"
 }
 
-# Function to check if path/file exists and is non-empty (for directories)
 check_exists() {
     local path="$1"
     if [ -f "$path" ]; then
@@ -136,7 +105,6 @@ check_exists() {
     fi
 }
 
-# Function to list files in a directory (for checklists)
 list_files() {
     local dir="$1"
     local extension="$2"
@@ -146,16 +114,11 @@ list_files() {
     fi
 }
 
-# Function to escape string for JSON
 json_escape() {
     local str="$1"
-    # Escape backslashes, quotes, and control characters
     printf '%s' "$str" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g' | tr -d '\n\r'
 }
 
-# Safely read .specify/feature.json's "feature_directory" value.
-# Mirrors spec-kit's own parser order (jq -> python3 -> grep/sed) from
-# scripts/bash/common.sh. Always returns 0 so a parse failure cannot abort set -e.
 read_feature_json() {
     local fj="$1/.specify/feature.json"
     [ -f "$fj" ] || { printf '%s' ''; return 0; }
@@ -175,9 +138,6 @@ read_feature_json() {
     printf '%s' "$fd"
 }
 
-# Left-pad a table cell to a visible width.
-# printf's %-Ns counts bytes, so a cell holding a 3-byte symbol like the check
-# mark comes out two columns short and the markdown table stops lining up.
 pad_cell() {
     local text="$1" width="$2" len
     len=${#text}
@@ -188,8 +148,6 @@ pad_cell() {
     done
 }
 
-# Function to count tasks in a tasks.md file
-# Returns: "total completed"
 count_tasks() {
     local tasks_file="$1"
     if [ -f "$tasks_file" ]; then
@@ -203,14 +161,11 @@ count_tasks() {
     fi
 }
 
-# Resolve repository root
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if git rev-parse --show-toplevel >/dev/null 2>&1; then
     REPO_ROOT=$(git rev-parse --show-toplevel)
     HAS_GIT=true
-    # symbolic-ref works in a repo with no commits, where rev-parse prints
-    # "HEAD" to stdout *and* exits non-zero. Keep rev-parse for detached HEAD.
     CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null) || \
         CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || \
         CURRENT_BRANCH=""
@@ -225,40 +180,32 @@ else
     CURRENT_BRANCH=""
 fi
 
-# Determine specs directory (specs/ or .specify/specs/)
 if [ -d "$REPO_ROOT/specs" ]; then
     SPECS_DIR="$REPO_ROOT/specs"
 elif [ -d "$REPO_ROOT/.specify/specs" ]; then
     SPECS_DIR="$REPO_ROOT/.specify/specs"
 else
-    SPECS_DIR="$REPO_ROOT/specs"  # Default even if doesn't exist
+    SPECS_DIR="$REPO_ROOT/specs"
 fi
 
-# Determine memory directory (.specify/memory or memory/)
 if [ -d "$REPO_ROOT/.specify/memory" ]; then
     MEMORY_DIR="$REPO_ROOT/.specify/memory"
 elif [ -d "$REPO_ROOT/memory" ]; then
     MEMORY_DIR="$REPO_ROOT/memory"
 else
-    MEMORY_DIR="$REPO_ROOT/.specify/memory"  # Default even if doesn't exist
+    MEMORY_DIR="$REPO_ROOT/.specify/memory"
 fi
 
-# Check constitution
 CONSTITUTION_PATH="$MEMORY_DIR/constitution.md"
 CONSTITUTION_EXISTS=$(check_exists "$CONSTITUTION_PATH")
 
-# Get project name
 PROJECT_NAME=$(get_project_name "$REPO_ROOT")
 
-# Check if on a feature branch. Spec-kit numbers features with three digits or
-# more, and --timestamp features are prefixed YYYYMMDD-HHMMSS.
 IS_FEATURE_BRANCH=false
 if echo "$CURRENT_BRANCH" | grep -qE '^[0-9]{3}[0-9]*-'; then
     IS_FEATURE_BRANCH=true
 fi
 
-# Collect all features. The glob must admit sequential prefixes of three digits
-# or more (001-, 1000-) as well as timestamp prefixes (20260910-123456-).
 FEATURES=()
 if [ -d "$SPECS_DIR" ]; then
     for dir in "$SPECS_DIR"/[0-9][0-9][0-9]*-*; do
@@ -268,16 +215,10 @@ if [ -d "$SPECS_DIR" ]; then
     done
 fi
 
-# Sort features by number
 if [ ${#FEATURES[@]} -gt 0 ]; then
     IFS=$'\n' FEATURES=($(sort <<<"${FEATURES[*]}")); unset IFS
 fi
 
-# ── Resolve the current feature ───────────────────────────────────────────────
-# Spec-kit 1.0.x no longer treats the git branch as authoritative. Mirror the
-# precedence in its own common.sh: SPECIFY_FEATURE_DIRECTORY, then
-# .specify/feature.json, then SPECIFY_FEATURE, then the branch as a legacy
-# fallback.
 
 CURRENT_FEATURE=""
 FEATURE_SOURCE=""
@@ -298,9 +239,6 @@ else
     fi
 fi
 
-# Match the resolved identifier against a real feature directory: exact name
-# first, then leading number prefix, since a branch name may abbreviate the
-# directory name.
 match_feature() {
     local id="$1" f prefix
     [ -n "$id" ] || return 0
@@ -326,9 +264,7 @@ fi
 
 CACHE_FILE="$SPECS_DIR/spec-status.md"
 
-# ── Per-feature data collection ───────────────────────────────────────────────
 
-# Storage arrays (indexed numerically, parallel to FEATURES array)
 FEAT_IS_CURRENT=()
 FEAT_HAS_SPEC=()
 FEAT_HAS_PLAN=()
@@ -345,7 +281,6 @@ for i in "${!FEATURES[@]}"; do
     feature="${FEATURES[$i]}"
     feature_dir="$SPECS_DIR/$feature"
 
-    # Determine if this is the current feature
     is_current=false
     if [ -n "$CURRENT_FEATURE" ] && [ "$feature" = "$CURRENT_FEATURE" ]; then
         is_current=true
@@ -374,7 +309,6 @@ for i in "${!FEATURES[@]}"; do
     FEAT_TASKS_COMPLETED[$i]="$tasks_completed"
 done
 
-# ── Write status file ─────────────────────────────────────────────────────────
 
 write_status_file() {
     local cache_file="$1"
@@ -385,7 +319,6 @@ write_status_file() {
     local timestamp
     timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u)
 
-    # Ensure the specs directory exists
     mkdir -p "$(dirname "$cache_file")"
 
     {
@@ -393,8 +326,7 @@ write_status_file() {
         echo "<!-- spec-status: project=$(json_escape "$PROJECT_NAME") commit=$current_commit updated=$timestamp -->"
         echo ""
 
-        # Build the markdown table
-        local col_widths=7  # minimum "Feature" width
+        local col_widths=7
         for feature in "${FEATURES[@]}"; do
             local len=${#feature}
             if [ "$len" -gt "$col_widths" ]; then col_widths=$len; fi
@@ -437,7 +369,6 @@ write_status_file() {
 
         echo ""
 
-        # Machine-readable per-feature metadata as HTML comments
         for i in "${!FEATURES[@]}"; do
             local feature="${FEATURES[$i]}"
             printf '<!-- feature: %s has_spec=%s has_plan=%s has_tasks=%s has_research=%s has_data_model=%s has_quickstart=%s has_contracts=%s has_checklists=%s tasks_total=%s tasks_completed=%s checklist_files=%s -->\n' \
@@ -457,23 +388,18 @@ write_status_file() {
     } > "$cache_file"
 }
 
-# Only write cache if the specs directory exists (or will exist)
 if [ -d "$SPECS_DIR" ] || [ "${#FEATURES[@]}" -gt 0 ]; then
     mkdir -p "$SPECS_DIR"
     write_status_file "$CACHE_FILE"
 fi
 
-# ── Resolve target feature ────────────────────────────────────────────────────
 
 RESOLVED_TARGET=""
 if [ -n "$TARGET_FEATURE" ]; then
-    # Try exact match first
     if [ -d "$SPECS_DIR/$TARGET_FEATURE" ]; then
         RESOLVED_TARGET="$TARGET_FEATURE"
-    # Try as path
     elif [ -d "$TARGET_FEATURE" ]; then
         RESOLVED_TARGET=$(basename "$TARGET_FEATURE")
-    # Try as number prefix
     elif echo "$TARGET_FEATURE" | grep -qE '^[0-9]+$'; then
         PREFIX=$(printf "%03d" "$TARGET_FEATURE")
         for f in "${FEATURES[@]}"; do
@@ -481,7 +407,6 @@ if [ -n "$TARGET_FEATURE" ]; then
                 "$PREFIX"-*) RESOLVED_TARGET="$f"; break ;;
             esac
         done
-    # Try partial match
     else
         for f in "${FEATURES[@]}"; do
             case "$f" in
@@ -496,9 +421,7 @@ if [ -n "$TARGET_FEATURE" ]; then
     fi
 fi
 
-# ── Output results ────────────────────────────────────────────────────────────
 
-# Helper to get feature index by name
 get_feature_index() {
     local name="$1"
     for i in "${!FEATURES[@]}"; do
@@ -560,8 +483,6 @@ if $JSON_MODE; then
         printf '"feature_source":null,'
     fi
 
-    # target_feature is what the caller asked for, falling back to whatever
-    # feature the project is currently on.
     TARGET_OUT="$RESOLVED_TARGET"
     [ -n "$TARGET_OUT" ] || TARGET_OUT="$CURRENT_FEATURE"
     if [ -n "$TARGET_OUT" ]; then
