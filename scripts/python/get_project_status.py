@@ -10,10 +10,6 @@ OPTIONS:
   --json              Output in JSON format (default: text)
   --feature <name>    Focus on specific feature (name, number prefix, or path)
   --help, -h          Show this help message
-
-This is the python runtime variant. It is behaviour-for-behaviour equivalent to
-scripts/bash/get-project-status.sh and scripts/powershell/Get-ProjectStatus.ps1;
-tests/test-status.sh asserts all three agree.
 """
 
 from __future__ import annotations
@@ -27,8 +23,6 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Sequential prefixes are three digits or more (001-, 1000-); --timestamp
-# features are prefixed YYYYMMDD-HHMMSS.
 FEATURE_RE = re.compile(r"^\d{3}\d*-")
 NUMBER_PREFIX_RE = re.compile(r"^(\d{3}\d*)-")
 TASK_TOTAL_RE = re.compile(r"^\s*- \[[ xX]\]")
@@ -135,11 +129,7 @@ def read_feature_json(repo_root: Path) -> str:
 
 
 def match_feature(identifier: str, features: list[str]) -> str | None:
-    """Exact name first, then leading number prefix.
-
-    A branch name may abbreviate the directory name, so the prefix is the
-    fallback rather than the primary match.
-    """
+    """Exact name first, then leading number prefix."""
     if not identifier:
         return None
     if identifier in features:
@@ -157,11 +147,8 @@ def match_feature(identifier: str, features: list[str]) -> str | None:
 def resolve_current_feature(
     repo_root: Path, current_branch: str, features: list[str]
 ) -> tuple[str | None, str | None]:
-    """Mirror spec-kit's own precedence from scripts/bash/common.sh.
-
-    SPECIFY_FEATURE_DIRECTORY, then .specify/feature.json, then SPECIFY_FEATURE,
-    then the git branch as a legacy fallback. The branch is no longer
-    authoritative in spec-kit 1.0.x.
+    """Resolve from SPECIFY_FEATURE_DIRECTORY, then .specify/feature.json,
+    then SPECIFY_FEATURE, then the git branch.
     """
     env_dir = os.environ.get("SPECIFY_FEATURE_DIRECTORY")
     if env_dir:
@@ -244,7 +231,6 @@ def write_status_file(
 
     lines.append("")
 
-    # Machine-readable per-feature metadata as HTML comments
     for feature in features:
         fields = " ".join(
             f"{key}={str(feature[key]).lower()}" for key in ARTIFACTS
@@ -271,22 +257,16 @@ def main() -> int:
     parser.add_argument("--json", action="store_true", help="Output in JSON format")
     parser.add_argument("--feature", help="Focus on specific feature")
     parser.add_argument("positional", nargs="?", help=argparse.SUPPRESS)
-    # Unrecognized flags are ignored rather than fatal. The command exposes
-    # --all and --verbose to users, but those are the agent's to interpret, not
-    # this script's; forwarding them must not turn a status query into an error.
     args, _ignored = parser.parse_known_args()
     positional = args.positional or ""
     if positional.startswith("-"):
         positional = ""
     target_feature = args.feature or positional
 
-    # ── Resolve repository root ───────────────────────────────────────────────
     script_dir = Path(__file__).resolve().parent
     git_root = git("rev-parse", "--show-toplevel")
     if git_root:
         repo_root, has_git = Path(git_root), True
-        # symbolic-ref works in a repo with no commits, where rev-parse prints
-        # "HEAD" and exits non-zero. Keep rev-parse for detached HEAD.
         current_branch = (
             git("symbolic-ref", "--short", "HEAD")
             or git("rev-parse", "--abbrev-ref", "HEAD")
@@ -322,7 +302,6 @@ def main() -> int:
         repo_root, current_branch, names
     )
 
-    # ── Per-feature data collection ───────────────────────────────────────────
     features = []
     for name in names:
         feature_dir = specs_dir / name
@@ -348,7 +327,6 @@ def main() -> int:
 
     resolved_target = resolve_target(target_feature, specs_dir, names) if target_feature else ""
 
-    # ── Output ────────────────────────────────────────────────────────────────
     if args.json:
         print(
             json.dumps(
@@ -367,8 +345,6 @@ def main() -> int:
                     "feature_count": len(features),
                     "current_feature": current_feature,
                     "feature_source": feature_source,
-                    # What the caller asked for, falling back to whatever
-                    # feature the project is currently on.
                     "target_feature": resolved_target or current_feature,
                     "features": features,
                 },
